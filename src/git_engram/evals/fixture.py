@@ -1,7 +1,7 @@
 """Deterministic synthetic monorepo used by the evaluation suite and the integration tests.
 
 "shopfront" is a small e-commerce monorepo (Python backend, TypeScript web + mobile, Go worker, YAML/SQL/
-HTML assets) with ~47 dated commits that reproduce the failure modes git-engram targets:
+HTML assets) with ~52 dated commits that reproduce the failure modes git-engram targets:
 
 * load-bearing bugfixes that look like redundant code (clock-skew grace, idempotency key, cache lock ...),
 * a performance "optimisation" that caused a race and was reverted,
@@ -738,6 +738,118 @@ func (c *Consumer) DeadLetter(ctx context.Context, msg *Message, attempts int) e
 """
 
 
+RESERVATIONS_PY = """
+\"\"\"Stock reservations held while a customer is checking out.\"\"\"
+import time
+
+RESERVATION_TTL_SECONDS = 900
+_STOCK: dict[str, int] = {}
+_RESERVATIONS: dict[str, tuple[str, int, float]] = {}
+
+
+class OutOfStockError(Exception):
+    code = "ERR_OUT_OF_STOCK"
+
+
+def reserve_stock(cart_id: str, sku: str, qty: int, now: float | None = None) -> None:
+    \"\"\"Hold ``qty`` units of ``sku`` for ``cart_id`` until the reservation expires.\"\"\"
+    now = time.time() if now is None else now
+    if _STOCK.get(sku, 0) < qty:
+        raise OutOfStockError(f"{OutOfStockError.code}: {sku} has fewer than {qty} units")
+    _STOCK[sku] -= qty
+    _RESERVATIONS[cart_id] = (sku, qty, now + RESERVATION_TTL_SECONDS)
+"""
+
+RELEASE_EXPIRED_PY = """
+
+def release_expired(now: float | None = None) -> int:
+    \"\"\"Give back stock held by reservations whose TTL elapsed; returns how many were released.\"\"\"
+    now = time.time() if now is None else now
+    expired = [cid for cid, (_, _, until) in _RESERVATIONS.items() if until <= now]
+    for cid in expired:
+        sku, qty, _ = _RESERVATIONS.pop(cid)
+        _STOCK[sku] = _STOCK.get(sku, 0) + qty
+    return len(expired)
+"""
+
+RESERVE_UNLOCKED = """    if _STOCK.get(sku, 0) < qty:
+        raise OutOfStockError(f"{OutOfStockError.code}: {sku} has fewer than {qty} units")
+    _STOCK[sku] -= qty
+    _RESERVATIONS[cart_id] = (sku, qty, now + RESERVATION_TTL_SECONDS)
+"""
+
+RESERVE_LOCKED = """    with _LOCK:  # check-and-decrement must be atomic (INC-2811)
+        if _STOCK.get(sku, 0) < qty:
+            raise OutOfStockError(f"{OutOfStockError.code}: {sku} has fewer than {qty} units")
+        _STOCK[sku] -= qty
+        _RESERVATIONS[cart_id] = (sku, qty, now + RESERVATION_TTL_SECONDS)
+"""
+
+COUNTDOWN_TS = """
+import { useEffect, useState } from "react";
+
+export const RESERVATION_TTL_MS = 900_000;
+
+export function useReservationCountdown(reservedAt: number): number {
+  const [left, setLeft] = useState(RESERVATION_TTL_MS);
+  useEffect(() => {
+    const id = setInterval(() => setLeft(Math.max(0, reservedAt + RESERVATION_TTL_MS - Date.now())), 1000);
+    return () => clearInterval(id);
+  }, [reservedAt]);
+  return left;
+}
+"""
+
+ADD_TO_CART_TSX = """
+import React, { useState } from "react";
+import { http } from "../api/http";
+
+export function AddToCartButton({ sku }: { sku: string }) {
+  const [error, setError] = useState<string | null>(null);
+  const add = async () => {
+    await http.post("/cart/items", { sku, qty: 1 });
+  };
+  return <button onClick={add}>Add to cart</button>;
+}
+"""
+
+ADD_UNHANDLED = """  const add = async () => {
+    await http.post("/cart/items", { sku, qty: 1 });
+  };
+  return <button onClick={add}>Add to cart</button>;"""
+
+ADD_HANDLED = """  const add = async () => {
+    try {
+      await http.post("/cart/items", { sku, qty: 1 });
+      setError(null);
+    } catch (err: any) {
+      if (err?.response?.data?.code === "ERR_OUT_OF_STOCK") {
+        setError("Sold out");
+        return;
+      }
+      throw err;
+    }
+  };
+  return (
+    <>
+      <button onClick={add}>Add to cart</button>
+      {error && <span role="alert">{error}</span>}
+    </>
+  );"""
+
+JOBS_YAML = """
+jobs:
+  nightly-sales-report:
+    schedule: "0 3 * * *"
+    command: python -m backend.reports.nightly
+"""
+
+RELEASE_JOB_YAML = """  release-expired-reservations:
+    schedule: "*/5 * * * *"
+    command: python -m backend.inventory.release
+"""
+
+
 def build_shopfront(root: Path) -> FixtureInfo:
     b = RepoBuilder(root)
 
@@ -1399,6 +1511,48 @@ def leftpad(text: str, width: int, fill: str = " ") -> str:
         "until they died with MemoryError.",
     )
 
+    # ---------------------------------------------------- v3 extension: inventory
+    b.write("backend/inventory/reservations.py", RESERVATIONS_PY)
+    b.write("web/src/hooks/useReservationCountdown.ts", COUNTDOWN_TS)
+    b.write("web/src/components/AddToCartButton.tsx", ADD_TO_CART_TSX)
+    b.write("deploy/cron/jobs.yaml", JOBS_YAML)
+    b.commit("2026-03-02", "dan", "feat(inventory): hold stock while customers check out")
+    b.append("backend/inventory/reservations.py", RELEASE_EXPIRED_PY)
+    b.append("deploy/cron/jobs.yaml", RELEASE_JOB_YAML)
+    b.commit(
+        "2026-03-09",
+        "dan",
+        "fix(inventory): release abandoned reservations after their TTL (INC-2803)",
+        "Customers who left checkout kept their units reserved forever, so popular items showed as sold out "
+        "while the warehouse was full. A cron job now returns expired reservations to stock.",
+    )
+    b.replace("backend/inventory/reservations.py", "import time\n", "import threading\nimport time\n")
+    b.replace(
+        "backend/inventory/reservations.py",
+        "_RESERVATIONS: dict[str, tuple[str, int, float]] = {}\n",
+        "_RESERVATIONS: dict[str, tuple[str, int, float]] = {}\n_LOCK = threading.Lock()\n",
+    )
+    b.replace("backend/inventory/reservations.py", RESERVE_UNLOCKED, RESERVE_LOCKED)
+    b.commit(
+        "2026-03-16",
+        "alice",
+        "fix(inventory): serialise reserve_stock to stop overselling (INC-2811)",
+        "Two concurrent checkouts both saw one unit left and both reserved it; the check-and-decrement must be atomic.",
+    )
+    b.replace("backend/inventory/reservations.py", "RESERVATION_TTL_SECONDS = 900", "RESERVATION_TTL_SECONDS = 600")
+    b.replace(
+        "web/src/hooks/useReservationCountdown.ts", "RESERVATION_TTL_MS = 900_000", "RESERVATION_TTL_MS = 600_000"
+    )
+    b.replace("deploy/cron/jobs.yaml", '"*/5 * * * *"', '"*/2 * * * *"')
+    b.commit("2026-03-23", "carol", "feat(inventory): shorten stock reservations to 10 minutes")
+    b.replace("web/src/components/AddToCartButton.tsx", ADD_UNHANDLED, ADD_HANDLED)
+    b.commit(
+        "2026-03-30",
+        "carol",
+        "fix(web): show ERR_OUT_OF_STOCK inline instead of crashing the product page",
+        "An unhandled promise rejection from a sold-out SKU took down the whole product page.",
+    )
+
     head = b._git("rev-parse", "HEAD")
     info = FixtureInfo(root=root, head=head, commits=dict(b.commits))
     info.failures = FAILURES
@@ -1553,6 +1707,36 @@ E        +  where 534 = shipping_cents_for(150, 'domestic')""",
 Ran 1 rule on 1 file: 1 finding.""",
         notes="Replaced hmac.compare_digest with == in verify_password for readability.",
         ts="2026-02-21",
+    ),
+    FailureSpec(
+        tag="F10-reserve-lock",
+        path="backend/inventory/reservations.py",
+        symbol="reserve_stock",
+        old="    with _LOCK:  # check-and-decrement must be atomic (INC-2811)",
+        new="    with contextlib.nullcontext():  # lock showed up in checkout profiles",
+        command="pytest tests/backend/test_reservations.py -q",
+        error="""FAILED tests/backend/test_reservations.py::test_concurrent_reservations_never_oversell - AssertionError: sold 2 units of sku-000777 but only 1 in stock
+E   AssertionError: sold 2 units of sku-000777 but only 1 in stock
+1 failed, 5 passed in 0.44s""",
+        notes="Replaced the reservation lock with nullcontext because it showed up in checkout profiles.",
+        ts="2026-04-02",
+    ),
+    FailureSpec(
+        tag="F11-ttl-mismatch",
+        path="backend/inventory/reservations.py",
+        symbol="<module>",
+        old="RESERVATION_TTL_SECONDS = 600",
+        new="RESERVATION_TTL_SECONDS = 300",
+        command="npx playwright test e2e/checkout.spec.ts",
+        error="""  1) e2e/checkout.spec.ts:41:7 > checkout > countdown matches the server reservation
+    Error: reservation expired on the server while the countdown still showed 05:00 remaining
+    expect(received).toBe(expected)
+    Expected: "reserved"
+    Received: "expired"
+  1 failed
+  9 passed (31.2s)""",
+        notes="Halved the reservation TTL in reservations.py without touching the web countdown.",
+        ts="2026-04-03",
     ),
 ]
 

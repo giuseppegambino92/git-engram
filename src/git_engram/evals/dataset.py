@@ -10,15 +10,18 @@ Relevance targets:
 overlap with the query); ``acceptable`` lists failures that are relevant enough not to count as false alarms.
 Queries are paraphrased: they deliberately avoid copying commit-message wording.
 
-Three splits:
+Four splits:
 
 * ``DEV_QUERIES`` (32) -- the calibration split. Every weight, threshold and design choice in the engine was made
   while looking at these, so their scores are optimistic by construction.
 * ``TEST_V1_QUERIES`` (24) -- the first held-out split, committed before the query router. Its results were
   later inspected to diagnose commit-capsule crowding, so it is **retired**: still reported, no longer unseen.
-* ``TEST_V2_QUERIES`` (24) -- the current held-out split, committed together with a fixture extension (shipping,
-  password hashing, dead-letter queue, cache regression) *before* the slot-budget fix existed. Half of it targets
-  facts that no other split mentions. Report these as the headline numbers.
+* ``TEST_V2_QUERIES`` (24) -- second held-out split, committed with a fixture extension before the slot-budget
+  fix. Its false-alarm results were then diagnosed, so it is **retired** too.
+* ``TEST_V3_QUERIES`` (24) -- the current held-out split, committed together with an inventory-reservations fixture
+  extension *before* symbol-level graveyard anchoring, the MMR removal and exact-route tuning existed. It includes
+  sibling-symbol queries (a different function in a file that has a recorded failure) to measure false alarms.
+  Report these as the headline numbers.
 """
 
 from __future__ import annotations
@@ -586,6 +589,164 @@ TEST_V2_QUERIES: list[EvalQuery] = [
     ),
 ]
 
-TEST_QUERIES = TEST_V2_QUERIES  # current held-out split
+C_RELEASE = "commit:fix(inventory): release abandoned reservations"
+C_OVERSELL = "commit:fix(inventory): serialise reserve_stock"
+C_TTL10 = "commit:feat(inventory): shorten stock reservations"
+C_OOS = "commit:fix(web): show ERR_OUT_OF_STOCK inline"
+C_PW_HELPERS = "commit:feat(auth): PBKDF2 password hashing helpers"
+RESERVE = "sym:backend/inventory/reservations.py::reserve_stock"
+RELEASE = "sym:backend/inventory/reservations.py::release_expired"
+OOS_ERR = "sym:backend/inventory/reservations.py::OutOfStockError"
+COUNTDOWN = "sym:web/src/hooks/useReservationCountdown.ts::useReservationCountdown"
+ADD_TO_CART = "sym:web/src/components/AddToCartButton.tsx::AddToCartButton"
+ISSUE_TOKEN = "sym:backend/auth/token.py::issue_token"
+SIGN_PAYLOAD = "sym:backend/auth/token.py::sign_payload"
+CACHE_SET = "sym:backend/cache/lru.py::TTLCache.set"
+HASH_PW = "sym:backend/auth/password.py::hash_password"
+RESERVATIONS_FILE = "file:backend/inventory/reservations.py"
+
+# Sibling-symbol queries (why-03, why-04, why-06, err-05) ask about a function whose *file* has a recorded failure on a
+# different function: a warning there is a false alarm by construction.
+TEST_V3_QUERIES: list[EvalQuery] = [
+    # ------------------------------------------------------------------ causal "why"
+    EvalQuery(
+        "v3-why-01",
+        "causal",
+        "why does reserve_stock hold a lock around the stock check",
+        {C_OVERSELL: 2, RESERVE: 1},
+        ("F10-reserve-lock",),
+    ),
+    EvalQuery(
+        "v3-why-02",
+        "causal",
+        "why is there a scheduled job that frees reservations",
+        {C_RELEASE: 2, RELEASE: 1},
+        acceptable=("F11-ttl-mismatch",),
+    ),
+    EvalQuery(
+        "v3-why-03", "causal", "why does issue_token sign the payload with an HMAC", {ISSUE_TOKEN: 2, SIGN_PAYLOAD: 2}
+    ),
+    EvalQuery(
+        "v3-why-04", "causal", "why does TTLCache.set evict the oldest entry when the cache is full", {CACHE_SET: 2}
+    ),
+    EvalQuery(
+        "v3-why-05",
+        "causal",
+        "what is the reason the web countdown uses a ten minute constant",
+        {C_TTL10: 2, COUNTDOWN: 1},
+        acceptable=("F11-ttl-mismatch",),
+    ),
+    EvalQuery("v3-why-06", "causal", "why does hash_password generate a random salt", {HASH_PW: 2, C_PW_HELPERS: 1}),
+    # ------------------------------------------------------------- bug / regression
+    EvalQuery(
+        "v3-bug-01",
+        "regression",
+        "two shoppers both bought the last pair of sneakers in stock",
+        {C_OVERSELL: 2, RESERVE: 1},
+        ("F10-reserve-lock",),
+    ),
+    EvalQuery(
+        "v3-bug-02",
+        "regression",
+        "items stayed reserved forever when people abandoned checkout",
+        {C_RELEASE: 2, RELEASE: 1},
+        acceptable=("F11-ttl-mismatch",),
+    ),
+    EvalQuery(
+        "v3-bug-03",
+        "regression",
+        "the checkout timer said five minutes left but the reservation had expired",
+        {COUNTDOWN: 2, RESERVATIONS_FILE: 1},
+        ("F11-ttl-mismatch",),
+    ),
+    EvalQuery(
+        "v3-bug-04",
+        "regression",
+        "adding a sold-out item crashed the product page",
+        {C_OOS: 2, ADD_TO_CART: 1},
+        acceptable=("F10-reserve-lock",),
+    ),
+    EvalQuery(
+        "v3-bug-05",
+        "regression",
+        "parcels just over 100 grams were undercharged for shipping",
+        {C_SHIP_CEIL: 2, SHIP: 1},
+        ("F8-shipping-floor",),
+    ),
+    EvalQuery(
+        "v3-bug-06", "regression", "display names with angle brackets broke the receipt mail", {C_SEC131: 2, RENDER: 1}
+    ),
+    # ------------------------------------------------------------------ coupled files
+    EvalQuery(
+        "v3-cpl-01",
+        "coupled",
+        "change how often the reservation release job runs",
+        {"file:deploy/cron/jobs.yaml": 2, RELEASE: 2},
+        coupled="backend/inventory/reservations.py",
+        acceptable=("F11-ttl-mismatch",),
+    ),
+    EvalQuery(
+        "v3-cpl-02",
+        "coupled",
+        "extend the stock reservation TTL to 20 minutes",
+        {RESERVATIONS_FILE: 2, "file:web/src/hooks/useReservationCountdown.ts": 2},
+        ("F11-ttl-mismatch",),
+        coupled="web/src/hooks/useReservationCountdown.ts",
+    ),
+    EvalQuery(
+        "v3-cpl-03",
+        "coupled",
+        "update the duration used by the reservation countdown hook",
+        {COUNTDOWN: 2, RESERVATIONS_FILE: 2},
+        ("F11-ttl-mismatch",),
+        coupled="backend/inventory/reservations.py",
+    ),
+    EvalQuery(
+        "v3-cpl-04",
+        "coupled",
+        "add a reservation id column to the orders table",
+        {"file:backend/db/schema.sql": 2, ORDER_ROW: 2},
+        coupled="backend/db/models.py",
+    ),
+    EvalQuery(
+        "v3-cpl-05",
+        "coupled",
+        "add the uk label to the shipping estimate widget",
+        {SHIP_WIDGET: 2, "file:backend/shipping/rates.py": 2},
+        coupled="backend/shipping/rates.py",
+        acceptable=("F8-shipping-floor",),
+    ),
+    EvalQuery(
+        "v3-cpl-06",
+        "coupled",
+        "add a new cache key to the helm values",
+        {"file:deploy/helm/values.yaml": 2, "file:backend/config/settings.py": 2},
+        coupled="backend/config/settings.py",
+        acceptable=("F6-cache-lock",),
+    ),
+    # ----------------------------------------------------------- exact identifiers
+    EvalQuery(
+        "v3-err-01",
+        "error-code",
+        "ERR_OUT_OF_STOCK",
+        {OOS_ERR: 2, ADD_TO_CART: 2, C_OOS: 1},
+        acceptable=("F10-reserve-lock",),
+    ),
+    EvalQuery("v3-err-02", "error-code", "INC-2811", {C_OVERSELL: 2, RESERVE: 1}, acceptable=("F10-reserve-lock",)),
+    EvalQuery("v3-err-03", "error-code", "INC-2803", {C_RELEASE: 2, RELEASE: 1}, acceptable=("F11-ttl-mismatch",)),
+    EvalQuery(
+        "v3-err-04", "error-code", "release_expired", {RELEASE: 2, C_RELEASE: 1}, acceptable=("F11-ttl-mismatch",)
+    ),
+    EvalQuery("v3-err-05", "error-code", "sign_payload", {SIGN_PAYLOAD: 2}),
+    EvalQuery(
+        "v3-err-06",
+        "error-code",
+        "AssertionError: sold 2 units of sku-000777 but only 1 in stock",
+        {RESERVE: 2, C_OVERSELL: 1},
+        ("F10-reserve-lock",),
+    ),
+]
+
+TEST_QUERIES = TEST_V3_QUERIES  # current held-out split
 QUERIES = DEV_QUERIES  # backwards-compatible alias
-SPLITS = {"dev": DEV_QUERIES, "test_v1": TEST_V1_QUERIES, "test_v2": TEST_V2_QUERIES}
+SPLITS = {"dev": DEV_QUERIES, "test_v1": TEST_V1_QUERIES, "test_v2": TEST_V2_QUERIES, "test_v3": TEST_V3_QUERIES}

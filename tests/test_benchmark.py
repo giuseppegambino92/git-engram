@@ -55,14 +55,14 @@ def test_benchmark_end_to_end(tmp_path):
 
 def test_splits_are_disjoint_and_ground_truth_exists(shopfront):
     """Validates held-out targets against the index WITHOUT running retrieval on them."""
-    from git_engram.evals.dataset import DEV_QUERIES, TEST_V1_QUERIES, TEST_V2_QUERIES
+    from git_engram.evals.dataset import DEV_QUERIES, TEST_V1_QUERIES, TEST_V2_QUERIES, TEST_V3_QUERIES
 
-    splits = [DEV_QUERIES, TEST_V1_QUERIES, TEST_V2_QUERIES]
+    splits = [DEV_QUERIES, TEST_V1_QUERIES, TEST_V2_QUERIES, TEST_V3_QUERIES]
     for i, a in enumerate(splits):
         for b in splits[i + 1 :]:
             assert not {q.qid for q in a} & {q.qid for q in b}
             assert not {q.text for q in a} & {q.text for q in b}
-    for split in (TEST_V1_QUERIES, TEST_V2_QUERIES):
+    for split in (TEST_V1_QUERIES, TEST_V2_QUERIES, TEST_V3_QUERIES):
         cats = {}
         for q in split:
             cats[q.category] = cats.get(q.category, 0) + 1
@@ -70,7 +70,7 @@ def test_splits_are_disjoint_and_ground_truth_exists(shopfront):
     e = shopfront.engine
     keys = {r["doc_key"] for r in e.db.query("SELECT doc_key FROM documents")}
     paths = {r["path"] for r in e.db.query("SELECT path FROM files")}
-    for q in DEV_QUERIES + TEST_V1_QUERIES + TEST_V2_QUERIES:
+    for q in DEV_QUERIES + TEST_V1_QUERIES + TEST_V2_QUERIES + TEST_V3_QUERIES:
         for target in q.relevant:
             if target.startswith("commit:"):
                 assert shopfront.info.commit_by_prefix(target[7:]), target
