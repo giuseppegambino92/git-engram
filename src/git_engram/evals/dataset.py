@@ -9,6 +9,14 @@ Relevance targets:
 ``coupled`` is a file that is *only* discoverable through temporal co-change (no import edge, little lexical
 overlap with the query); ``acceptable`` lists failures that are relevant enough not to count as false alarms.
 Queries are paraphrased: they deliberately avoid copying commit-message wording.
+
+Two splits:
+
+* ``DEV_QUERIES`` (32) -- the calibration split. Every weight and threshold in the engine was chosen while
+  looking at these, so their scores are optimistic by construction.
+* ``TEST_QUERIES`` (24) -- the held-out split, written and committed *before* the query-adaptive router existed
+  and never used for any tuning decision. Many target fixture facts the dev split never asks about, and the
+  coupled-file queries approach each coupling from the opposite side. Report these as the headline numbers.
 """
 
 from __future__ import annotations
@@ -41,6 +49,10 @@ C_JITTER = "commit:fix(worker): add full jitter"
 C_NFKC = "commit:fix(search): NFKC-normalise queries"
 C_STALE = "commit:fix(cart): reject checkout of outdated carts"
 C_E4012 = "commit:feat(payments): friendly message for E4012"
+C_CENTS = "commit:feat(api): switch order totals to integer cents"
+C_TIMEOUT8 = "commit:fix(config): raise payment timeout to 8s"
+C_USERDOC = "commit:docs(api): document UserSchema exposure rules"
+C_SHIPTYPE = "commit:fix(web): add missing shippingCents"
 
 TOKEN = "sym:backend/auth/token.py::is_token_expired"
 RETRY = "sym:backend/payments/retry.py::charge_with_retry"
@@ -60,8 +72,12 @@ PARSE_ORDER = "sym:mobile/src/parsers/orderParser.ts::parseOrder"
 USER_MSG = "sym:backend/payments/gateway.py::user_message_for"
 CHECKOUT_TS = "sym:web/src/api/cartClient.ts::checkoutCart"
 ORDER_ROW = "sym:backend/db/models.py::OrderRow"
+USER_SCHEMA = "sym:backend/api/schemas.py::UserSchema"
+WEB_ORDER = "sym:web/src/api/orderTypes.ts::Order"
+MOBILE_ORDER = "sym:mobile/src/parsers/orderParser.ts::MobileOrder"
+DECLINED = "sym:backend/payments/gateway.py::PaymentDeclined"
 
-QUERIES: list[EvalQuery] = [
+DEV_QUERIES: list[EvalQuery] = [
     # ------------------------------------------------------------------ causal "why"
     EvalQuery(
         "why-01",
@@ -249,3 +265,159 @@ QUERIES: list[EvalQuery] = [
         "err-08", "error-code", "what did commit {short:Revert} change", {C_REVERT: 2, CACHE_GET: 1}, ("F6-cache-lock",)
     ),
 ]
+
+
+TEST_QUERIES: list[EvalQuery] = [
+    # ------------------------------------------------------------------ causal "why"
+    EvalQuery(
+        "t-why-01",
+        "causal",
+        "what is the purpose of the CLOCK_SKEW_SECONDS constant",
+        {C_SKEW: 2, TOKEN: 1},
+        ("F1-clock-skew",),
+    ),
+    EvalQuery(
+        "t-why-02",
+        "causal",
+        "why does checkoutCart reload the cart when the server rejects the request",
+        {C_STALE: 2, CHECKOUT_TS: 1},
+        acceptable=("F3-asyncio",),
+    ),
+    EvalQuery(
+        "t-why-03",
+        "causal",
+        "why are order amounts stored as integer cents rather than floats",
+        {C_CENTS: 2, ORDER_SCHEMA: 1},
+        acceptable=("F7-parser-dollars", "F4-rounding"),
+    ),
+    EvalQuery(
+        "t-why-04",
+        "causal",
+        "why was the payment gateway timeout increased to 8 seconds",
+        {C_TIMEOUT8: 2, "file:backend/config/settings.py": 1},
+        acceptable=("F2-idempotency",),
+    ),
+    EvalQuery(
+        "t-why-05",
+        "causal",
+        "why does Backoff randomise the delay with rand.Int63n",
+        {C_JITTER: 2, BACKOFF: 1},
+        acceptable=("F5-ack-order",),
+    ),
+    EvalQuery(
+        "t-why-06",
+        "causal",
+        "why must the public user schema never contain password hashes",
+        {C_USERDOC: 2, USER_SCHEMA: 1},
+    ),
+    # ------------------------------------------------------------- bug / regression
+    EvalQuery(
+        "t-bug-01",
+        "regression",
+        "two browser tabs paid for an out-of-date list of items",
+        {C_STALE: 2, CHECKOUT: 1},
+        acceptable=("F3-asyncio",),
+    ),
+    EvalQuery(
+        "t-bug-02",
+        "regression",
+        "a script tag in a customer display name ran inside webmail clients",
+        {C_SEC131: 2, RENDER: 1},
+    ),
+    EvalQuery("t-bug-03", "regression", "double clicking the pay button created two orders", {C_BUTTON: 2, BUTTON: 1}),
+    EvalQuery(
+        "t-bug-04",
+        "regression",
+        "web app broke because the Order type was missing the shipping amount",
+        {C_SHIPTYPE: 2, "file:web/src/api/orderTypes.ts": 1},
+        acceptable=("F7-parser-dollars",),
+    ),
+    EvalQuery(
+        "t-bug-05",
+        "regression",
+        "tokens issued to the mobile app looked expired the moment they were created",
+        {C_SKEW: 2, TOKEN: 1},
+        ("F1-clock-skew",),
+    ),
+    EvalQuery(
+        "t-bug-06",
+        "regression",
+        "after removing the read lock, catalogue lookups raised KeyError under load",
+        {C_REVERT: 2, CACHE_GET: 1},
+        ("F6-cache-lock",),
+    ),
+    # ------------------------------------------------------------------ coupled files
+    EvalQuery(
+        "t-cpl-01",
+        "coupled",
+        "change the CACHE_TTL_SECONDS value in the helm chart values",
+        {"file:deploy/helm/values.yaml": 2, "file:backend/config/settings.py": 2},
+        coupled="backend/config/settings.py",
+    ),
+    EvalQuery(
+        "t-cpl-02",
+        "coupled",
+        "redesign the HTML layout of the receipt template",
+        {"file:backend/templates/receipt.html": 2, RENDER: 2},
+        coupled="backend/notifications/email.py",
+    ),
+    EvalQuery(
+        "t-cpl-03",
+        "coupled",
+        "raise max_attempts in the worker retry configuration file",
+        {"file:worker/config/worker.yaml": 2, BACKOFF: 2},
+        coupled="worker/pkg/queue/backoff.go",
+        acceptable=("F5-ack-order",),
+    ),
+    EvalQuery(
+        "t-cpl-04",
+        "coupled",
+        "add a field to the OrderRow dataclass",
+        {ORDER_ROW: 2, "file:backend/db/schema.sql": 2},
+        coupled="backend/db/schema.sql",
+    ),
+    EvalQuery(
+        "t-cpl-05",
+        "coupled",
+        "add a giftWrap flag to the web Order interface",
+        {WEB_ORDER: 2, "file:backend/api/schemas.py": 2, "file:mobile/src/parsers/orderParser.ts": 1},
+        coupled="backend/api/schemas.py",
+        acceptable=("F7-parser-dollars",),
+    ),
+    EvalQuery(
+        "t-cpl-06",
+        "coupled",
+        "change the MobileOrder type used by the mobile app",
+        {MOBILE_ORDER: 2, "file:backend/api/schemas.py": 2},
+        coupled="backend/api/schemas.py",
+        acceptable=("F7-parser-dollars",),
+    ),
+    # ----------------------------------------------------------- exact identifiers
+    EvalQuery("t-err-01", "error-code", "SEC-118", {C_SEC118: 2, REFRESH: 1}),
+    EvalQuery("t-err-02", "error-code", "INC-2510", {C_REVERT: 2, CACHE_GET: 1}, acceptable=("F6-cache-lock",)),
+    EvalQuery("t-err-03", "error-code", "INC-2655", {C_TIMEOUT8: 2, "file:backend/config/settings.py": 1}),
+    EvalQuery(
+        "t-err-04",
+        "error-code",
+        "KeyError: 'sku-000123' in TTLCache.get",
+        {CACHE_GET: 2, C_REVERT: 1},
+        ("F6-cache-lock",),
+    ),
+    EvalQuery(
+        "t-err-05",
+        "error-code",
+        "PaymentDeclined E4012 expired_card",
+        {USER_MSG: 2, C_E4012: 2, DECLINED: 1},
+        acceptable=("F2-idempotency",),
+    ),
+    EvalQuery(
+        "t-err-06",
+        "error-code",
+        "AssertionError: assert 83 == 82 in the tax rounding test",
+        {TAX: 2, C_BANKER: 1},
+        ("F4-rounding",),
+    ),
+]
+
+QUERIES = DEV_QUERIES  # backwards-compatible alias
+SPLITS = {"dev": DEV_QUERIES, "test": TEST_QUERIES}

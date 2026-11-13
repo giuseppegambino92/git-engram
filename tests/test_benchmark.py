@@ -44,3 +44,30 @@ def test_benchmark_end_to_end(tmp_path):
     assert payload["preflight"]["p50_ms"] < 20
     assert payload["scale"][0]["recall@10_same_dim"] > 0.8
     assert "| **git-engram** (full) |" in payload["markdown"] and "Ablation study" in payload["markdown"]
+
+
+def test_splits_are_disjoint_and_ground_truth_exists(shopfront):
+    """Validates held-out targets against the index WITHOUT running retrieval on them."""
+    from git_engram.evals.dataset import DEV_QUERIES, TEST_QUERIES
+
+    assert not {q.qid for q in DEV_QUERIES} & {q.qid for q in TEST_QUERIES}
+    assert not {q.text for q in DEV_QUERIES} & {q.text for q in TEST_QUERIES}
+    cats = {}
+    for q in TEST_QUERIES:
+        cats[q.category] = cats.get(q.category, 0) + 1
+    assert set(cats.values()) == {6}
+    e = shopfront.engine
+    keys = {r["doc_key"] for r in e.db.query("SELECT doc_key FROM documents")}
+    paths = {r["path"] for r in e.db.query("SELECT path FROM files")}
+    for q in DEV_QUERIES + TEST_QUERIES:
+        for target in q.relevant:
+            if target.startswith("commit:"):
+                assert shopfront.info.commit_by_prefix(target[7:]), target
+            elif target.startswith("sym:"):
+                assert target in keys, target
+            else:
+                assert target[5:] in paths, target
+        if q.coupled:
+            assert q.coupled in paths
+        for tag in q.failures + q.acceptable:
+            assert tag in shopfront.failure_ids
