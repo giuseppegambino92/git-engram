@@ -27,6 +27,7 @@ def test_dashboard_search_graph_and_graveyard(shopfront):
             results = app.query_one("#results")
             assert results.row_count > 0
             assert app.last_response.query_class == "exact"
+            assert "/" not in app.sub_title and app.sub_title == shopfront.info.root.name  # no local path leak
             assert "ms" in str(app.query_one("#search-status").render())
             await pilot.press("down")
 

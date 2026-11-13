@@ -87,7 +87,7 @@ class EngramApp(App):
         yield Footer()
 
     def on_mount(self) -> None:
-        self.sub_title = str(self.engine.root)
+        self.sub_title = self.engine.root.name  # never a full local path: screenshots get shared
         results = self.query_one("#results", DataTable)
         results.add_columns("#", "kind", "result", "BM25", "Ham", "cos", "graph", "TD-RRF", "rerank")
         hot = self.query_one("#hotspots", DataTable)
