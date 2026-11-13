@@ -262,7 +262,7 @@ prefix is then the best rank-$d$ approximation, which is exactly the property MR
 landed at Hamming rank 112. git-engram first applies a fixed Haar-random rotation (SimHash). The bit-flip
 probability is then the angle,
 
-$$\Pr\big[\operatorname{sgn}(r_j^\top x)\neq \operatorname{sgn}(r_j^\top y)\big] = \frac{\theta(x,y)}{\pi},$$
+$$\Pr\big[\mathrm{sgn}(r_j^\top x)\neq \mathrm{sgn}(r_j^\top y)\big] = \frac{\theta(x,y)}{\pi},$$
 
 so $\mathbb{E}[d_H]/d = \theta/\pi$. This is verified in `tests/test_quantization.py`, and it lifted stage-1
 recall@10 from 0.49 to 0.91. Distances are computed as `popcount(XOR)` on a **bit-sliced, column-major** layout
@@ -293,7 +293,7 @@ $$a(v) = \delta \sum_{s \in \text{seeds}} a(s)\, W(s,v)\,\gamma^{\,\mathbf{1}[\t
 
 The three rankings are fused with **Time-Decayed Reciprocal Rank Fusion**:
 
-$$\operatorname{Score}(d) = \sum_{m \in \{\text{BM25},\,\text{Vec},\,\text{Graph}\}} \frac{w_m}{k + \operatorname{rank}_m(d)} \cdot \left(1 + \alpha\, e^{-\lambda \Delta t_d}\right)$$
+$$\mathrm{Score}(d) = \sum_{m \in \{\text{BM25},\,\text{Vec},\,\text{Graph}\}} \frac{w_m}{k + \mathrm{rank}_m(d)} \cdot \left(1 + \alpha\, e^{-\lambda \Delta t_d}\right)$$
 
 Here $\Delta t_d$ is the age of the document's last change: the last commit touching that symbol, the commit itself,
 or the failure time. Defaults: $k=60$, $w_m=1$, $\alpha=0.25$, $t_{1/2}=120$ days.
