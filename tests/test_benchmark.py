@@ -27,7 +27,7 @@ def test_dataset_is_balanced():
     for q in QUERIES:
         cats[q.category] = cats.get(q.category, 0) + 1
         assert q.relevant
-    assert len(QUERIES) >= 25 and set(cats.values()) == {8}
+    assert len(QUERIES) >= 40 and min(cats.values()) >= 8 and len(cats) == 5
 
 
 def test_benchmark_end_to_end(tmp_path):

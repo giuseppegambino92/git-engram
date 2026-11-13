@@ -12,7 +12,7 @@ Queries are paraphrased: they deliberately avoid copying commit-message wording.
 
 Five splits:
 
-* ``DEV_QUERIES`` (40) -- the calibration split (5 categories x 8, including behavioral "why" queries). Every
+* ``DEV_QUERIES`` (48) -- the calibration split (8 per category, 16 natural-language bug reports). Every
   weight, threshold and design choice in the engine was made while looking at these: scores are optimistic.
 * ``TEST_V1_QUERIES`` (24) -- **retired**. Committed before the query router; later used to diagnose
   commit-capsule crowding.
@@ -987,6 +987,66 @@ TEST_V4_QUERIES: list[EvalQuery] = [
         "AssertionError: bucket empty for 2400s after a -2400s wall-clock step",
         {REFILL: 2, C_MONOTONIC: 1},
         ("F12-wallclock",),
+    ),
+]
+
+# Dev expansion: natural-language bug reports (silent drops, stale state, boundary cases, "kept doing X"). They may
+# reuse facts from retired held-out splits, never their text (see test_no_test_file_contains_held_out_query_text).
+DEV_QUERIES += [
+    EvalQuery(
+        "bug-09",
+        "regression",
+        "orders were silently dropped whenever a payload could not be parsed",
+        {C_DLQ: 2, DEAD_LETTER: 1},
+        acceptable=("F5-ack-order",),
+    ),
+    EvalQuery(
+        "bug-10",
+        "regression",
+        "the request budget stayed empty for ages after the server time was corrected",
+        {C_MONOTONIC: 2, REFILL: 1},
+        ("F12-wallclock",),
+    ),
+    EvalQuery(
+        "bug-11",
+        "regression",
+        "stale holds kept stock locked long after shoppers left the site",
+        {C_RELEASE: 2, RELEASE: 1},
+        acceptable=("F11-ttl-mismatch",),
+    ),
+    EvalQuery(
+        "bug-12",
+        "regression",
+        "a webhook delivery from yesterday was accepted a second time",
+        {C_WEBHOOK_REPLAY: 2, VERIFY_WEBHOOK: 1},
+        ("F13-webhook-replay",),
+    ),
+    EvalQuery(
+        "bug-13",
+        "regression",
+        "parcels slightly over a 100 g step were priced as the lighter step",
+        {C_SHIP_CEIL: 2, SHIP: 1},
+        ("F8-shipping-floor",),
+    ),
+    EvalQuery(
+        "bug-14",
+        "regression",
+        "a wrong password got rejected measurably faster than a nearly right one",
+        {C_SEC150: 2, VERIFY_PW: 1},
+        ("F9-password-eq",),
+    ),
+    EvalQuery(
+        "bug-15",
+        "regression",
+        "the browser kept hammering the API in a tight loop after a 429",
+        {C_RETRY_AFTER: 2, HTTP_FILE: 1},
+    ),
+    EvalQuery(
+        "bug-16",
+        "regression",
+        "two carts both ended up holding the final unit of an item",
+        {C_OVERSELL: 2, RESERVE: 1},
+        ("F10-reserve-lock",),
     ),
 ]
 
