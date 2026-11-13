@@ -10,9 +10,9 @@ served over the **Model Context Protocol** in ~2 ms. No LangChain, no LlamaIndex
 ![python](https://img.shields.io/badge/python-3.11%2B-3776AB)
 ![license](https://img.shields.io/badge/license-MIT-green)
 ![MCP](https://img.shields.io/badge/MCP-stdio%20server-7c3aed)
-![tests](https://img.shields.io/badge/tests-102%20passing-brightgreen)
+![tests](https://img.shields.io/badge/tests-122%20passing-brightgreen)
 ![frameworks](https://img.shields.io/badge/black--box%20frameworks-0-black)
-![latency](https://img.shields.io/badge/preflight%20P95-1.9%20ms-orange)
+![latency](https://img.shields.io/badge/preflight%20P95-%3C5%20ms-orange)
 
 </div>
 
@@ -74,7 +74,7 @@ These approaches were ALREADY TRIED in this repository and FAILED. Do not repeat
 ```
 
 The agent now knows the rule, why it exists, the exact patch that already failed, and what else has to change.
-(12.55 ms is a cold one-shot CLI process; inside the long-running MCP server the same call takes ~1.4 ms.)
+(12.55 ms is a cold one-shot CLI process; inside the long-running MCP server the same call takes 1.4–2.3 ms.)
 
 ---
 
@@ -82,66 +82,87 @@ The agent now knows the rule, why it exists, the exact patch that already failed
 
 `git-engram benchmark` builds a reproducible synthetic monorepo (Python API, TypeScript web + mobile, Go worker,
 YAML/SQL/HTML) with 37 dated commits. It contains real-looking bugfixes, a perf "optimisation" that was reverted, five
-hidden cross-language couplings, a poisoned vendored file, and 7 failed agent attempts in the Graveyard. It then runs
-**32 ground-truth queries**: 8 causal "why", 8 bug-regression, 8 coupled-file and 8 exact-identifier.
+hidden cross-language couplings, a poisoned vendored file, and 7 failed agent attempts in the Graveyard.
 
 Every configuration sees **the same corpus, the same embedder and the same FTS5 index**. Baselines get the failure
 records as ordinary documents. For their ranking metrics, failures are filtered out (the most generous treatment);
 their warning hit-rate counts a relevant failure anywhere in the unfiltered top-5.
 
+### Held-out evaluation (the headline numbers)
+
+The queries come in two splits ([`dataset.py`](src/git_engram/evals/dataset.py)):
+
+- **Dev / calibration (32 queries).** Every weight, threshold and design choice was made while looking at these, so
+  their scores are optimistic by construction.
+- **Held-out test (24 queries, 6 per category).** Written and committed in
+  [`6c03c3c`](#dogfooding-git-engram-on-itself) *before* the query router existed. Validated only structurally (every
+  target exists in the index), and never run through retrieval until the final benchmark. Many target facts the dev
+  split never asks about, and the coupled-file queries approach each coupling from the opposite side.
+
+**Held-out test split, 24 unseen queries:**
+
 | Configuration | Recall@3 | Recall@5 | MRR | nDCG@5 | Neg. Warning Hit | False Alarms | Co-Change Disc. | Index RAM (KB) | P50 (ms) | P95 (ms) |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| Dense RAG (float32 cosine) | 0.583 | 0.703 | 0.764 | 0.629 | 87% | 6% | 0% | 229.5 | 0.23 | 0.37 |
-| BM25 only (SQLite FTS5) | 0.651 | 0.734 | **0.885** | 0.739 | 67% | **0%** | 0% | **47.0** | 0.31 | 0.49 |
-| Hybrid (BM25 + float32, RRF) | 0.630 | 0.719 | 0.829 | 0.704 | 73% | 6% | 0% | 276.5 | 0.40 | 0.63 |
-| **git-engram** (full) | **0.740** | **0.781** | 0.878 | **0.793** | **93%** | 6% | **62%** | 95.5 | 1.76 | 2.65 |
+| Dense RAG (float32 cosine) | 0.632 | 0.771 | 0.751 | 0.682 | **100%** | 5% | 33% | 229.5 | 0.19 | 0.27 |
+| BM25 only (SQLite FTS5) | 0.625 | **0.785** | 0.830 | 0.743 | 80% | **0%** | 33% | **47.0** | 0.47 | 0.65 |
+| Hybrid (BM25 + float32, RRF) | 0.632 | 0.764 | 0.801 | 0.733 | 80% | 5% | 33% | 276.5 | 0.65 | 0.89 |
+| **git-engram** (full) | **0.708** | 0.722 | **0.931** | **0.792** | **100%** | **0%** | **67%** | 95.5 | 2.68 | 3.93 |
 
-| nDCG@5 by category | causal "why" | regression | coupled-file | error-code |
+| nDCG@5, held-out | causal "why" | regression | coupled-file | error-code |
 |---|---:|---:|---:|---:|
-| Dense RAG (float32) | 0.628 | 0.788 | 0.370 | 0.730 |
-| BM25 only | 0.812 | 0.907 | 0.435 | **0.803** |
-| Hybrid (BM25 + float32) | 0.754 | **0.909** | 0.412 | 0.741 |
-| **git-engram** | **0.948** | 0.860 | **0.579** | 0.786 |
+| Dense RAG (float32) | 0.661 | 0.685 | 0.526 | 0.857 |
+| BM25 only | 0.781 | **0.827** | 0.565 | 0.800 |
+| Hybrid (BM25 + float32) | 0.757 | 0.767 | 0.546 | **0.863** |
+| **git-engram** | **0.902** | 0.786 | **0.667** | 0.812 |
 
-**Ablations**: each row removes one component.
+**Dev split (32 queries; optimistic):** git-engram reaches nDCG@5 **0.829** vs 0.739 for BM25 and 0.704 for hybrid,
+and **beats BM25 on regression queries, 0.913 vs 0.907**. Full table: [`benchmarks/RESULTS.md`](benchmarks/RESULTS.md).
 
-| Variant | Recall@5 | MRR | nDCG@5 | Co-Change Disc. | Neg. Warning Hit |
-|---|---:|---:|---:|---:|---:|
-| git-engram (full) | 0.781 | 0.878 | 0.793 | 62% | 93% |
-| − co-change graph path | 0.740 | 0.896 | 0.777 | 12% | 93% |
-| − interaction reranker | 0.734 | 0.707 | 0.621 | 62% | 73% |
-| − MMR file diversity | 0.781 | 0.885 | 0.797 | 38% | 93% |
-| − time decay (plain RRF) | 0.724 | 0.855 | 0.760 | 62% | 93% |
-| float32 exact instead of 1-bit + int8 | 0.781 | 0.878 | 0.793 | 62% | 93% |
+**Ablations:** each row removes one component, measured on both splits.
 
-**`engram_preflight_check` latency:** P50 **1.40 ms**, P95 **1.92 ms** (warm MCP server, 7 targets × 30 runs).
+| Variant | nDCG@5 dev | nDCG@5 **test** | Recall@5 test | MRR test | Co-Change Disc. test | Neg. Warning Hit test |
+|---|---:|---:|---:|---:|---:|---:|
+| git-engram (full) | 0.829 | 0.792 | 0.722 | 0.931 | 67% | 100% |
+| − query-adaptive router (fixed weights) | 0.793 | 0.759 | 0.729 | 0.882 | 67% | 100% |
+| − co-change graph path | 0.785 | 0.790 | 0.729 | 0.918 | 50% | 100% |
+| − interaction reranker | 0.647 | 0.464 | 0.597 | 0.521 | 67% | 80% |
+| − MMR file diversity | 0.831 | 0.825 | 0.778 | 0.931 | 67% | 100% |
+| − time decay (plain RRF) | 0.802 | 0.806 | 0.743 | 0.944 | 83% | 100% |
+| float32 exact instead of 1-bit + int8 | 0.829 | 0.792 | 0.722 | 0.931 | 67% | 100% |
+
+**`engram_preflight_check` latency:** P50 **2.29 ms**, P95 **4.15 ms** (warm MCP server, 7 targets × 30 runs).
 
 **Two-stage quantized search at scale** (synthetic Dirichlet topic mixtures of the corpus embeddings, 400 candidates):
 
 | Vectors | Recall@10 vs float32-384d | Recall@10 vs float32-256d | Two-stage P50 | float32 P50 | Two-stage RAM | float32 RAM |
 |---:|---:|---:|---:|---:|---:|---:|
-| 10,000 | 0.831 | 0.982 | 0.20 ms | 0.27 ms | 2.8 MB | 14.6 MB |
-| 100,000 | 0.738 | 0.968 | **0.66 ms** | 2.53 ms | **27.8 MB** | 146.5 MB |
+| 10,000 | 0.831 | 0.982 | 0.26 ms | 0.35 ms | 2.8 MB | 14.6 MB |
+| 100,000 | 0.738 | 0.968 | **0.98 ms** | 3.79 ms | **27.8 MB** | 146.5 MB |
 
 **Context firewall:** 12/12 injection payloads detected and neutralised; 0/12 benign snippets modified.
 
-Apple M-series, Python 3.14, single thread. Raw numbers: [`benchmarks/RESULTS.md`](benchmarks/RESULTS.md),
+Apple M-series, Python 3.14, single thread. Latencies vary about 2× between runs on the same machine depending on
+load; quality metrics are deterministic. Raw numbers: [`benchmarks/RESULTS.md`](benchmarks/RESULTS.md),
 [`benchmarks/results.json`](benchmarks/results.json). Reproduce with `git-engram benchmark`.
 
 ### Reading the numbers honestly
 
-- **Where it wins.** Causal "why" queries (+0.14 nDCG@5 over the best baseline), coupled-file discovery (62% vs 0%),
-  failure warnings (93% vs ≤87%) and RAM (vectors 5× smaller than float32 at equal quality).
-- **Where it does not.** On plain bug-regression queries BM25 is better (0.907 vs 0.860): graph expansion
-  occasionally pulls a coupled file above a commit. BM25 also keeps the best MRR and the smallest index, and
-  git-engram is ~5–6× slower than a single BM25 call. The extra time is the reranker and Negative-RAG work, and it is
-  still ~2 ms.
-- **Quantization is free here.** On the fixture the two-stage 1-bit → int8 search gives *identical* metrics to exact
-  float32. At 100k vectors it keeps 97% of the same-dimension float32 top-10 and runs 3.8× faster in 5.3× less RAM.
-  The lower "vs 384d" column is caused by MRL truncation of isotropic synthetic noise; real LSA spectra are lower-rank.
-- **What was tuned.** The reranker weights are hand-set. The two Graveyard thresholds were chosen from the observed
-  separation between related and unrelated failures on this fixture, and the MMR/graph-exclusion trade-off is shown
-  in the ablation. There is no held-out set, and the fixture is synthetic: treat the numbers as evidence for the
+- **What generalises.** On unseen queries git-engram keeps the best nDCG@5 (+0.05 over BM25), MRR (+0.10) and
+  Recall@3. Causal "why" queries gain +0.12 nDCG@5, coupled-file queries +0.10, and hidden-coupling discovery doubles.
+  It warns about 100% of relevant past failures with zero false alarms, and the query router adds +0.033 nDCG@5 on
+  the held-out split.
+- **What did not generalise.** The router closed the regression gap on dev (0.913 vs BM25 0.907) but **not on the
+  held-out split (0.786 vs 0.827)**. git-engram also has the *lowest* held-out Recall@5. The per-query diagnosis is
+  consistent: commit capsules crowd code out of the top 5 (often 3–4 of 5 slots), so the target function lands at
+  rank 6+ or loses to its file's `<module>` chunk. MMR only diversifies within a file's code documents, never across
+  document kinds, and the router's "symptom → prefer commits" intent amplifies the effect.
+- **Overfitting the held-out split exposed.** Removing MMR diversity (+0.033) or time decay (+0.014) *improves*
+  held-out nDCG@5, although both looked neutral-to-helpful on dev. They stay enabled because changing them now would
+  be tuning on the test split. The fix (kind-aware diversification) is the next step, and it needs a fresh held-out
+  set before it can be claimed.
+- **Quantization is free here.** On both splits the two-stage 1-bit → int8 search gives *identical* metrics to exact
+  float32. At 100k vectors it keeps 97% of the same-dimension float32 top-10 in 5.3× less RAM and runs ~4× faster.
+- **Still synthetic.** One generated repository with a 56-query evaluation. Treat the numbers as evidence for the
   mechanisms, not as a universal leaderboard.
 
 ---
@@ -258,6 +279,23 @@ hits, int8 cosine, query-intent vs document-kind agreement, and graph activation
 (`retrieval.cross_encoder_dir`). Finally, **MMR file diversity** penalises the 2nd, 3rd, … document from the same
 file, which frees top-5 slots for commits and coupled files.
 
+### 4b. Query-adaptive router
+
+Before fusion, a deterministic classifier inspects surface features of the query and picks per-query path weights
+and the reranker's intent ([`router.py`](src/git_engram/retrieval/router.py)). Precedence is first match wins:
+
+| class | trigger | $w_{\text{BM25}}$ | $w_{\text{vec}}$ | $w_{\text{graph}}$ | reranker prefers |
+|---|---|---:|---:|---:|---|
+| `causal` | why / reason / purpose / rationale / explain | 1.0 | 1.0 | 0.5 | commits, failures |
+| `change` | imperative add / change / rename / tune / raise ... | 1.0 | 1.0 | **1.3** | code |
+| `exact` | commit hash, `ERR_X` / `E4012` / `INC-123`, exception name, quoted string, file path | **1.6** | 0.6 | 0.5 | neutral |
+| `symptom` | natural-language bug report ("billed twice", "logged out", "under load") | 1.2 | 1.0 | **0.3** | commits that fixed it |
+| `general` | anything else | 1.0 | 1.0 | 1.0 | auto |
+
+Routing costs microseconds and never looks at the corpus. The weights were set once, from the reasoning above, and
+checked on the dev split only. The class and the weights used are returned with every search (`query_class`,
+`fusion_weights`) and shown by `git-engram query` and the TUI.
+
 ### 5. Negative RAG: the Graveyard Index
 
 `git-engram exec -- pytest -x` is a transparent wrapper: output is teed live and the exit code is preserved. On a
@@ -304,8 +342,8 @@ git-engram index                   # AST + history + co-change graph + embedding
 git-engram preflight src/auth/token.py -s is_token_expired -i "remove the grace period"
 ```
 
-> PyPI release pending. Until then, from a clone: `pipx install .` or `uv tool install .`. For tree-sitter
-> grammars add the `[treesitter]` extra; for neural embeddings and cross-encoders add `[onnx]`.
+> PyPI release pending. Until then, from a clone: `pipx install .` or `uv tool install .`. Extras: `[tui]` for the dashboard,
+> `[treesitter]` for tree-sitter grammars, `[onnx]` for neural embeddings and cross-encoders.
 
 ### Claude Code
 
@@ -353,11 +391,56 @@ git-engram invariant add RULE --scope "src/payments/**" --description "..." --se
 git-engram graveyard                          # list failed attempts
 git-engram inspect                            # hidden-coupling hotspots, load-bearing files, memory footprint
 git-engram benchmark [--out RESULTS.md --json results.json]
+git-engram tui ["optional query"]             # interactive dashboard (also: git-engram inspect --tui)
 git-engram mcp                                # stdio MCP server
 ```
 
 `git-engram query` prints the full scoring breakdown for every hit: BM25 rank and score, Hamming distance, int8
 cosine, graph activation, TD-RRF score, recency multiplier, rerank score and per-stage latency.
+
+## Interactive dashboard
+
+`pip install 'git-engram[tui]'`, then `git-engram tui`. It has four tabs, switched with `F1`–`F4`:
+
+- **Search:** search-as-you-type over the full engine, with each path's evidence per hit (BM25 rank, Hamming
+  distance, int8 cosine, co-change activation, TD-RRF, rerank). It shows the router class, the weights and the
+  end-to-end latency, plus panels for anti-context, invariants and coupling alerts.
+- **Co-change graph:** coupling hotspots, and every neighbour of the selected file with W, P(co-change) and
+  hidden/import-linked status, expanded down to the symbol-level edges.
+- **Graveyard:** every failed attempt with its command, failure signature and syntax-highlighted diff.
+- **Overview:** index size, quantized vs. float32 memory, load-bearing hotspots and OKF invariants.
+
+| Live search with anti-context | Hidden co-change graph | Graveyard diff browser |
+|---|---|---|
+| ![search](docs/tui-search.svg) | ![co-change](docs/tui-cochange.svg) | ![graveyard](docs/tui-graveyard.svg) |
+
+The screenshots are real renders of the benchmark repository (`App.save_screenshot()`). `tests/test_tui.py` drives the
+same app headlessly.
+
+## Dogfooding: git-engram on itself
+
+This repository is built as atomic commits (`git log --oneline`), so git-engram can index its own history:
+
+```console
+$ git-engram index .
+  files 72 · AST symbols 614 · commits 23 · documents 633 · parsers python-ast:59, text:13
+$ git-engram preflight src/git_engram/embeddings/vector_index.py -s QuantizedVectorIndex.search \
+      -i "binarize without the random rotation"
+<ast_context>
+  method QuantizedVectorIndex.search  src/git_engram/embeddings/vector_index.py:L132-L159
+  blame ownership: b1f2fbcc [feature] 100%
+</ast_context>
+<causal_history>
+  2026-11-13 b1f2fbcc67 [feature] feat(embeddings): hashing-LSA embedder, Matryoshka/int8/1-bit quantization ...
+</causal_history>
+<related_memory>
+  [symbol] function test_simhash_hamming_estimates_angle  (tests/test_quantization.py)
+  ...
+```
+
+The related memory surfaces the test that proves *why* the rotation exists, which is what an agent about to remove
+it needs to see. The held-out query set was committed in `6c03c3c`, before the router commit, so the ordering
+claimed in the benchmark section can be checked with `git log`.
 
 ## Configuration
 
@@ -383,8 +466,8 @@ Both run on raw ONNX Runtime + `tokenizers`, with no torch.
 ## Development
 
 ```bash
-uv venv && uv pip install -e ".[dev]" ruff
-pytest -q                                    # 102 tests, ~10 s, fully offline
+uv venv && uv pip install -e ".[dev]"
+pytest -q                                    # 122 tests, fully offline (verified on Python 3.11 and 3.14)
 GIT_ENGRAM_NO_TREE_SITTER=1 pytest -q        # what CI runners without cached grammars execute
 ruff check src tests
 git-engram benchmark
@@ -394,7 +477,9 @@ The suite covers quantization math (Hamming kernels vs. an `unpackbits` referenc
 error bounds, counting select), AST chunking for 5 languages, `git log` patch parsing and per-symbol attribution
 across renames, the co-change formula against a hand computation, TD-RRF, spreading activation, `exec` auto-capture
 through the real CLI, incremental re-indexing, the context firewall, OKF invariants, MCP tools in-process **and over
-a real stdio subprocess**, and the benchmark end to end.
+a real stdio subprocess**, the query router, the Textual dashboard (headless), the dev/test split integrity, and the
+benchmark end to end. The benchmark test only asserts "beats every baseline" on the **dev** split; held-out numbers
+are reported, never asserted or tuned against.
 
 ## Limitations
 
@@ -403,7 +488,14 @@ a real stdio subprocess**, and the benchmark end to end.
   new documents accumulate (or with `--rebuild`).
 - History follows file renames that `git -M` detects. A *symbol* rename starts a new lineage.
 - Merge commits are skipped (`--no-merges`); their changes are attributed through the merged commits.
-- Tested on macOS and Linux; Windows path handling is untested.
+- **Retrieval known issue (held-out):** commit capsules can crowd code symbols out of the top 5, which lowers
+  Recall@5 and regression-query quality (see the benchmark section). The planned fix is kind-aware diversification,
+  evaluated on a fresh held-out set.
+- Some graveyard matches sit close to the 0.40 threshold. For example, a paraphrased "billed twice" symptom scores
+  ~0.41, so re-fitting the embedder (`--rebuild`) can flip whether that warning appears. Warnings anchored to the same
+  file or symbol (preflight) are robust; purely textual ones are not.
+- Verified locally on macOS with Python 3.11 and 3.14. The CI matrix (Linux + macOS, 3.11–3.13) is configured but has
+  not yet run on GitHub. Windows path handling is untested.
 
 ## License
 
