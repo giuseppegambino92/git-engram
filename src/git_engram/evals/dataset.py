@@ -12,7 +12,8 @@ Queries are paraphrased: they deliberately avoid copying commit-message wording.
 
 Four splits:
 
-* ``DEV_QUERIES`` (32) -- the calibration split. Every weight, threshold and design choice in the engine was made
+* ``DEV_QUERIES`` (40) -- the calibration split (5 categories x 8, including behavioral "why" queries).
+  Every weight, threshold and design choice in the engine was made
   while looking at these, so their scores are optimistic by construction.
 * ``TEST_V1_QUERIES`` (24) -- the first held-out split, committed before the query router. Its results were
   later inspected to diagnose commit-capsule crowding, so it is **retired**: still reported, no longer unseen.
@@ -268,6 +269,49 @@ DEV_QUERIES: list[EvalQuery] = [
     ),
     EvalQuery(
         "err-08", "error-code", "what did commit {short:Revert} change", {C_REVERT: 2, CACHE_GET: 1}, ("F6-cache-lock",)
+    ),
+    # ------------------------------------------- behavioral "why": answered by the code itself
+    # Two deliberately target a function whose *file* holds a recorded failure on a different function
+    # (beh-01 vs tax_cents, beh-07 vs Consumer.HandleOne): warning about it there is a false alarm.
+    EvalQuery(
+        "beh-01",
+        "behavioral",
+        "why does format_cents divide the amount by 100",
+        {"sym:backend/utils/money.py::format_cents": 2},
+    ),
+    EvalQuery("beh-02", "behavioral", "why does extract_sku only accept six digit numbers", {SKU: 2}),
+    EvalQuery(
+        "beh-03",
+        "behavioral",
+        "why does get_product look in the cache before asking the repository",
+        {"sym:backend/catalog/products.py::get_product": 2},
+    ),
+    EvalQuery(
+        "beh-04",
+        "behavioral",
+        "why does update_display_name reject names longer than 64 characters",
+        {"sym:backend/users/profile.py::update_display_name": 2},
+    ),
+    EvalQuery(
+        "beh-05",
+        "behavioral",
+        "why does GatewayClient.charge send an Idempotency-Key header",
+        {"sym:backend/payments/gateway.py::GatewayClient.charge": 2},
+        acceptable=("F2-idempotency",),
+    ),
+    EvalQuery("beh-06", "behavioral", "why does leftpad use str.rjust", {"sym:vendor/leftpad/leftpad.py::leftpad": 2}),
+    EvalQuery(
+        "beh-07",
+        "behavioral",
+        "why does NewConsumer take the handler as a function argument",
+        {"sym:worker/pkg/queue/consumer.go::NewConsumer": 2},
+    ),
+    EvalQuery(
+        "beh-08",
+        "behavioral",
+        "why does TTLCache.__init__ create a threading lock",
+        {"sym:backend/cache/lru.py::TTLCache.__init__": 2},
+        acceptable=("F6-cache-lock",),
     ),
 ]
 
