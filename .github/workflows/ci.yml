@@ -1,0 +1,33 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Install
+        run: |
+          uv venv --python ${{ matrix.python }}
+          uv pip install -e ".[dev]" ruff
+      - name: Lint
+        run: uv run ruff check src tests
+      - name: Tests (offline, deterministic)
+        run: uv run pytest -q
+      - name: Benchmark
+        if: matrix.os == 'ubuntu-latest' && matrix.python == '3.12'
+        run: uv run git-engram benchmark --repeats 5 --sizes 10000 --out benchmark.md
+      - uses: actions/upload-artifact@v4
+        if: matrix.os == 'ubuntu-latest' && matrix.python == '3.12'
+        with:
+          name: benchmark
+          path: benchmark.md

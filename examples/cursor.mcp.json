@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "git-engram": {
+      "command": "git-engram",
+      "args": ["-C", "${workspaceFolder}", "mcp"]
+    }
+  }
+}
