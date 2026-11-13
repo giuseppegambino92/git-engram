@@ -1,7 +1,7 @@
 """Deterministic synthetic monorepo used by the evaluation suite and the integration tests.
 
 "shopfront" is a small e-commerce monorepo (Python backend, TypeScript web + mobile, Go worker, YAML/SQL/
-HTML assets) with ~58 dated commits that reproduce the failure modes git-engram targets:
+HTML assets) with ~65 dated commits that reproduce the failure modes git-engram targets:
 
 * load-bearing bugfixes that look like redundant code (clock-skew grace, idempotency key, cache lock ...),
 * a performance "optimisation" that caused a race and was reverted,
@@ -933,6 +933,103 @@ def verify_webhook(body: bytes, signature: str, ts: int, secret: bytes, now: flo
 """
 
 
+COUPONS_PY = """
+\"\"\"Coupon validation and discount application.\"\"\"
+from dataclasses import dataclass
+from datetime import datetime
+
+
+@dataclass
+class Coupon:
+    code: str
+    percent_off: int = 0
+    amount_off_cents: int = 0
+    expires_on: str = ""  # ISO date; empty means the coupon never expires
+
+
+def is_coupon_valid(coupon: Coupon, now: datetime) -> bool:
+    \"\"\"Whether ``coupon`` can still be used; callers answer ERR_COUPON_EXPIRED when this returns False.\"\"\"
+    return not coupon.expires_on or now.date().isoformat() < coupon.expires_on
+
+
+def apply_coupons(total_cents: int, coupons: list[Coupon]) -> int:
+    \"\"\"Order total after applying every coupon in order (percentages first compound, then fixed amounts).\"\"\"
+    for c in coupons:
+        total_cents -= total_cents * c.percent_off // 100 + c.amount_off_cents
+    return total_cents
+"""
+
+FIND_COUPON_PY = """
+
+class CouponError(Exception):
+    code = "ERR_COUPON_UNKNOWN"
+
+
+def find_coupon(code: str, catalog: dict[str, Coupon]) -> Coupon:
+    \"\"\"Look up a coupon by its case-insensitive code, raising CouponError for unknown codes.\"\"\"
+    coupon = catalog.get(code.strip().upper())
+    if coupon is None:
+        raise CouponError(f"{CouponError.code}: {code}")
+    return coupon
+"""
+
+COUPON_FIELD_TSX = """
+import React, { useState } from "react";
+import { http } from "../api/http";
+
+export function CouponField({ cartId }: { cartId: string }) {
+  const [message, setMessage] = useState("");
+  const apply = async (code: string) => {
+    try {
+      await http.post(`/carts/${cartId}/coupons`, { code });
+      setMessage("Coupon applied");
+    } catch (err: any) {
+      setMessage("Coupon could not be applied");
+    }
+  };
+  return <input placeholder="Coupon" onBlur={(e) => apply(e.target.value)} aria-label={message} />;
+}
+"""
+
+COUPON_GENERIC = """      setMessage("Coupon could not be applied");"""
+
+COUPON_EXPIRED = """      const code = err?.response?.data?.code;
+      setMessage(code === "ERR_COUPON_EXPIRED" ? "This coupon has expired" : "Coupon could not be applied");"""
+
+COUPON_UNKNOWN = """      const code = err?.response?.data?.code;
+      if (code === "ERR_COUPON_UNKNOWN") return setMessage("We don't know this coupon code");
+      setMessage(code === "ERR_COUPON_EXPIRED" ? "This coupon has expired" : "Coupon could not be applied");"""
+
+CSV_EXPORT_PY = """
+\"\"\"CSV export of orders for the finance team.\"\"\"
+
+
+def _cell(value) -> str:
+    \"\"\"Render one CSV cell.\"\"\"
+    text = str(value)
+    return text
+
+
+def export_orders_csv(rows: list[dict]) -> str:
+    \"\"\"Render orders as CSV; the first line is a header so the finance import can map columns by name.\"\"\"
+    header = ["id", "customer", "total_cents"]
+    lines = [",".join(header)]
+    for row in rows:
+        lines.append(",".join(_cell(row[k]) for k in header))
+    return "\\n".join(lines) + "\\n"
+"""
+
+CSV_CELL_PLAIN = """    text = str(value)
+    return text
+"""
+
+CSV_CELL_QUOTED = """    text = str(value)
+    if any(ch in text for ch in ',"\\n'):
+        text = '"' + text.replace('"', '""') + '"'
+    return text
+"""
+
+
 def build_shopfront(root: Path) -> FixtureInfo:
     b = RepoBuilder(root)
 
@@ -1694,6 +1791,61 @@ def leftpad(text: str, width: int, fill: str = " ") -> str:
         "A captured delivery could be replayed hours later because nothing checked the signed timestamp.",
     )
 
+    # ------------------------------------------------- v5 extension: promotions
+    b.write("backend/promotions/coupons.py", COUPONS_PY)
+    b.write("web/src/components/CouponField.tsx", COUPON_FIELD_TSX)
+    b.commit("2026-06-01", "alice", "feat(promotions): coupons with percentage and fixed discounts")
+    b.replace(
+        "backend/promotions/coupons.py",
+        "    return total_cents\n",
+        "    return max(total_cents, 0)  # stacked coupons must never refund money (INC-3011)\n",
+    )
+    b.commit(
+        "2026-06-08",
+        "bob",
+        "fix(promotions): never let stacked coupons push an order below zero (INC-3011)",
+        "Two stacked 60% coupons plus a fixed coupon produced a negative total, which the payment service "
+        "turned into a refund to the customer's card.",
+    )
+    b.replace(
+        "backend/promotions/coupons.py",
+        "now.date().isoformat() < coupon.expires_on",
+        "now.date().isoformat() <= coupon.expires_on",
+    )
+    b.replace("web/src/components/CouponField.tsx", COUPON_GENERIC, COUPON_EXPIRED)
+    b.commit(
+        "2026-06-15",
+        "carol",
+        "fix(promotions): keep coupons valid through their whole expiry day (INC-3020)",
+        "The expiry check used a strict comparison, so a coupon expiring today was rejected from midnight and "
+        "customers saw ERR_COUPON_EXPIRED on its last valid day.",
+    )
+    b.append("backend/promotions/coupons.py", FIND_COUPON_PY)
+    b.replace("web/src/components/CouponField.tsx", COUPON_EXPIRED, COUPON_UNKNOWN)
+    b.commit("2026-06-22", "carol", "feat(promotions): report unknown coupon codes with ERR_COUPON_UNKNOWN")
+
+    # ----------------------------------------------------- v5 extension: exports
+    b.write("backend/exports/csv_export.py", CSV_EXPORT_PY)
+    b.commit("2026-06-29", "dan", "feat(exports): finance CSV export of orders")
+    b.replace("backend/exports/csv_export.py", CSV_CELL_PLAIN, CSV_CELL_QUOTED)
+    b.commit(
+        "2026-07-06",
+        "dan",
+        "fix(exports): quote CSV cells containing commas or quotes (INC-3033)",
+        "Customer names such as 'Smith, Jane' shifted every following column in the finance import.",
+    )
+    b.replace(
+        "backend/exports/csv_export.py",
+        "    text = str(value)\n",
+        '    text = str(value)\n    if text[:1] in ("=", "+", "-", "@"):\n        text = "\'" + text\n',
+    )
+    b.commit(
+        "2026-07-13",
+        "alice",
+        "fix(security): neutralise spreadsheet formulas in CSV exports (SEC-190)",
+        "A customer registered as =HYPERLINK(...) and the formula executed when finance opened the export.",
+    )
+
     head = b._git("rev-parse", "HEAD")
     info = FixtureInfo(root=root, head=head, commits=dict(b.commits))
     info.failures = FAILURES
@@ -1904,6 +2056,31 @@ E   assert True is False
 E    +  where True = verify_webhook(b'{"id": 7}', '9a1f...', 1700000000, b'k', now=1700007200)""",
         notes="Dropped the timestamp tolerance in verify_webhook because partner clocks drift.",
         ts="2026-05-15",
+    ),
+    FailureSpec(
+        tag="F14-csv-formula",
+        path="backend/exports/csv_export.py",
+        symbol="_cell",
+        old='    if text[:1] in ("=", "+", "-", "@"):\n        text = "\'" + text\n',
+        new="",
+        command="pytest tests/backend/test_csv_export.py -q",
+        error="""FAILED tests/backend/test_csv_export.py::test_formula_cells_are_neutralised - AssertionError: cell starts with '='
+E   AssertionError: cell starts with '=' and would execute in a spreadsheet: =HYPERLINK("http://evil.example")""",
+        notes="Removed the leading-apostrophe escaping in _cell because finance disliked apostrophes on negative amounts.",
+        ts="2026-07-15",
+    ),
+    FailureSpec(
+        tag="F15-coupon-negative",
+        path="backend/promotions/coupons.py",
+        symbol="apply_coupons",
+        old="    return max(total_cents, 0)  # stacked coupons must never refund money (INC-3011)",
+        new="    return total_cents",
+        command="pytest tests/backend/test_coupons.py -q",
+        error="""FAILED tests/backend/test_coupons.py::test_stacked_coupons_never_go_negative - assert -1200 >= 0
+E   assert -1200 >= 0
+E    +  where -1200 = apply_coupons(5000, [Coupon('A', 60), Coupon('B', 60), Coupon('C', 0, 3000)])""",
+        notes="Simplified apply_coupons by dropping the zero clamp at the end.",
+        ts="2026-07-16",
     ),
 ]
 

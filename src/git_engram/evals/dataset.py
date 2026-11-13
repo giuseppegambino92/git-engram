@@ -10,7 +10,7 @@ Relevance targets:
 overlap with the query); ``acceptable`` lists failures that are relevant enough not to count as false alarms.
 Queries are paraphrased: they deliberately avoid copying commit-message wording.
 
-Five splits:
+Six splits:
 
 * ``DEV_QUERIES`` (48) -- the calibration split (8 per category, 16 natural-language bug reports). Every
   weight, threshold and design choice in the engine was made while looking at these: scores are optimistic.
@@ -21,9 +21,11 @@ Five splits:
 * ``TEST_V3_QUERIES`` (24) -- **retired**. Committed before symbol-level anchoring, the MMR removal and exact-route
   tuning; later used to diagnose the causal-query regression and sibling-commit false alarms. Contains
   sibling-symbol queries.
-* ``TEST_V4_QUERIES`` (30) -- the current held-out split (6 per category, including behavioral), committed with a
-  rate-limiting / signed-webhook fixture extension *before* code-first routing and commit-relevance gating existed.
-  Report these as the headline numbers.
+* ``TEST_V4_QUERIES`` (30) -- **retired**. Committed before code-first routing and commit-relevance gating; later
+  used to diagnose the warning-recall drop and the regression-routing gap.
+* ``TEST_V5_QUERIES`` (30) -- the current held-out split (6 per category), committed with a promotions / CSV-export
+  fixture extension *before* the direct top-commit warning trigger and the broadened symptom routing existed.
+  Regression queries are natural-language bug reports. Report these as the headline numbers.
 """
 
 from __future__ import annotations
@@ -1050,7 +1052,198 @@ DEV_QUERIES += [
     ),
 ]
 
-TEST_QUERIES = TEST_V4_QUERIES  # current held-out split
+C_COUPON_FLOOR = "commit:fix(promotions): never let stacked coupons push an order below zero"
+C_COUPON_EXPIRY = "commit:fix(promotions): keep coupons valid through their whole expiry day"
+C_COUPON_UNKNOWN = "commit:feat(promotions): report unknown coupon codes"
+C_CSV_QUOTE = "commit:fix(exports): quote CSV cells"
+C_CSV_FORMULA = "commit:fix(security): neutralise spreadsheet formulas"
+C_BACKOFF100 = "commit:perf(worker): lower the base retry backoff to 100ms"
+APPLY_COUPONS = "sym:backend/promotions/coupons.py::apply_coupons"
+COUPON_VALID = "sym:backend/promotions/coupons.py::is_coupon_valid"
+FIND_COUPON = "sym:backend/promotions/coupons.py::find_coupon"
+COUPON_CLASS = "sym:backend/promotions/coupons.py::Coupon"
+COUPON_ERROR = "sym:backend/promotions/coupons.py::CouponError"
+COUPON_FIELD = "sym:web/src/components/CouponField.tsx::CouponField"
+CSV_CELL = "sym:backend/exports/csv_export.py::_cell"
+CSV_EXPORT = "sym:backend/exports/csv_export.py::export_orders_csv"
+COUPONS_FILE = "file:backend/promotions/coupons.py"
+COUPON_FIELD_FILE = "file:web/src/components/CouponField.tsx"
+
+# Sibling probes (no warning expected): beh-01 and err-05 export_orders_csv vs the _cell failure, beh-02
+# is_coupon_valid and beh-04 Coupon vs the apply_coupons failure.
+TEST_V5_QUERIES: list[EvalQuery] = [
+    # -------------------------------------------------------- causal "why" (history)
+    EvalQuery(
+        "v5-why-01",
+        "causal",
+        "why was a zero floor added to apply_coupons",
+        {C_COUPON_FLOOR: 2, APPLY_COUPONS: 1},
+        ("F15-coupon-negative",),
+    ),
+    EvalQuery(
+        "v5-why-02",
+        "causal",
+        "why did the coupon expiry comparison change from before to on-or-before",
+        {C_COUPON_EXPIRY: 2, COUPON_VALID: 1},
+    ),
+    EvalQuery(
+        "v5-why-03",
+        "causal",
+        "what led to quoting CSV cells that contain commas",
+        {C_CSV_QUOTE: 2, CSV_CELL: 1},
+        acceptable=("F14-csv-formula",),
+    ),
+    EvalQuery(
+        "v5-why-04",
+        "causal",
+        "why were spreadsheet formulas escaped in the order export",
+        {C_CSV_FORMULA: 2, CSV_CELL: 1},
+        ("F14-csv-formula",),
+    ),
+    EvalQuery(
+        "v5-why-05",
+        "causal",
+        "why was a dedicated error for unknown coupon codes introduced",
+        {C_COUPON_UNKNOWN: 2, FIND_COUPON: 1},
+    ),
+    EvalQuery(
+        "v5-why-06",
+        "causal",
+        "why was the base retry backoff lowered",
+        {C_BACKOFF100: 2, BACKOFF: 1},
+        acceptable=("F5-ack-order",),
+    ),
+    # ------------------------------------------- behavioral "why" (answered by code)
+    EvalQuery("v5-beh-01", "behavioral", "why does export_orders_csv write a header row first", {CSV_EXPORT: 2}),
+    EvalQuery(
+        "v5-beh-02", "behavioral", "why does is_coupon_valid accept coupons without an expiry date", {COUPON_VALID: 2}
+    ),
+    EvalQuery(
+        "v5-beh-03",
+        "behavioral",
+        "why does find_coupon raise CouponError for codes it does not know",
+        {FIND_COUPON: 2, COUPON_ERROR: 1},
+    ),
+    EvalQuery("v5-beh-04", "behavioral", "why does Coupon store percent_off as an integer", {COUPON_CLASS: 2}),
+    EvalQuery(
+        "v5-beh-05",
+        "behavioral",
+        "why does reloadCart fetch the cart from the server again",
+        {"sym:web/src/api/cartClient.ts::reloadCart": 2},
+    ),
+    EvalQuery(
+        "v5-beh-06", "behavioral", "why does tax_cents use Decimal arithmetic", {TAX: 2}, acceptable=("F4-rounding",)
+    ),
+    # ------------------------------------------------ natural-language bug reports
+    EvalQuery(
+        "v5-bug-01",
+        "regression",
+        "customers ended up with negative order totals after combining coupons",
+        {C_COUPON_FLOOR: 2, APPLY_COUPONS: 1},
+        ("F15-coupon-negative",),
+    ),
+    EvalQuery(
+        "v5-bug-02",
+        "regression",
+        "a coupon stopped working on the morning of its last valid day",
+        {C_COUPON_EXPIRY: 2, COUPON_VALID: 1},
+    ),
+    EvalQuery(
+        "v5-bug-03",
+        "regression",
+        "the finance import shifted columns whenever a customer name had a comma",
+        {C_CSV_QUOTE: 2, CSV_CELL: 1},
+        acceptable=("F14-csv-formula",),
+    ),
+    EvalQuery(
+        "v5-bug-04",
+        "regression",
+        "opening the export in a spreadsheet ran a formula hidden in a customer name",
+        {C_CSV_FORMULA: 2, CSV_CELL: 1},
+        ("F14-csv-formula",),
+    ),
+    EvalQuery(
+        "v5-bug-05",
+        "regression",
+        "mistyped coupon codes only produced a vague error message",
+        {C_COUPON_UNKNOWN: 2, COUPON_FIELD: 1},
+    ),
+    EvalQuery(
+        "v5-bug-06",
+        "regression",
+        "sessions on phones whose clock runs ahead ended right after login",
+        {C_SKEW: 2, TOKEN: 1},
+        ("F1-clock-skew",),
+    ),
+    # ------------------------------------------------------------------ coupled files
+    EvalQuery(
+        "v5-cpl-01",
+        "coupled",
+        "add a free-shipping coupon type to the promotions module",
+        {COUPONS_FILE: 2, COUPON_FIELD_FILE: 2},
+        coupled="web/src/components/CouponField.tsx",
+        acceptable=("F15-coupon-negative",),
+    ),
+    EvalQuery(
+        "v5-cpl-02",
+        "coupled",
+        "change the error text the coupon input shows",
+        {COUPON_FIELD: 2, COUPONS_FILE: 2},
+        coupled="backend/promotions/coupons.py",
+    ),
+    EvalQuery(
+        "v5-cpl-03",
+        "coupled",
+        "tighten the nginx burst setting for the public API",
+        {NGINX_FILE: 2, RATE_FILE: 2},
+        coupled="backend/api/rate_limit.py",
+        acceptable=("F12-wallclock",),
+    ),
+    EvalQuery(
+        "v5-cpl-04",
+        "coupled",
+        "add a max_delay key to worker.yaml",
+        {"file:worker/config/worker.yaml": 2, BACKOFF: 2},
+        coupled="worker/pkg/queue/backoff.go",
+        acceptable=("F5-ack-order",),
+    ),
+    EvalQuery(
+        "v5-cpl-05",
+        "coupled",
+        "add a promo_code field to the order API schema",
+        {ORDER_SCHEMA: 2, "file:mobile/src/parsers/orderParser.ts": 2, "file:web/src/api/orderTypes.ts": 1},
+        coupled="mobile/src/parsers/orderParser.ts",
+        acceptable=("F7-parser-dollars",),
+    ),
+    EvalQuery(
+        "v5-cpl-06",
+        "coupled",
+        "change the footer of the receipt e-mail template",
+        {"file:backend/templates/receipt.html": 2, RENDER: 2},
+        coupled="backend/notifications/email.py",
+    ),
+    # ----------------------------------------------------------- exact identifiers
+    EvalQuery("v5-err-01", "error-code", "ERR_COUPON_EXPIRED", {C_COUPON_EXPIRY: 2, COUPON_VALID: 1, COUPON_FIELD: 1}),
+    EvalQuery(
+        "v5-err-02",
+        "error-code",
+        "INC-3011",
+        {C_COUPON_FLOOR: 2, APPLY_COUPONS: 1},
+        acceptable=("F15-coupon-negative",),
+    ),
+    EvalQuery("v5-err-03", "error-code", "SEC-190", {C_CSV_FORMULA: 2, CSV_CELL: 1}, acceptable=("F14-csv-formula",)),
+    EvalQuery("v5-err-04", "error-code", "ERR_COUPON_UNKNOWN", {FIND_COUPON: 2, C_COUPON_UNKNOWN: 2, COUPON_FIELD: 1}),
+    EvalQuery("v5-err-05", "error-code", "export_orders_csv", {CSV_EXPORT: 2}),
+    EvalQuery(
+        "v5-err-06",
+        "error-code",
+        "assert -1200 >= 0 in test_stacked_coupons_never_go_negative",
+        {APPLY_COUPONS: 2, C_COUPON_FLOOR: 1},
+        ("F15-coupon-negative",),
+    ),
+]
+
+TEST_QUERIES = TEST_V5_QUERIES  # current held-out split
 QUERIES = DEV_QUERIES  # backwards-compatible alias
 SPLITS = {
     "dev": DEV_QUERIES,
@@ -1058,4 +1251,5 @@ SPLITS = {
     "test_v2": TEST_V2_QUERIES,
     "test_v3": TEST_V3_QUERIES,
     "test_v4": TEST_V4_QUERIES,
+    "test_v5": TEST_V5_QUERIES,
 }

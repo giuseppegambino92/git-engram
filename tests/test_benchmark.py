@@ -58,23 +58,31 @@ def test_benchmark_end_to_end(tmp_path):
 
 def test_splits_are_disjoint_and_ground_truth_exists(shopfront):
     """Validates held-out targets against the index WITHOUT running retrieval on them."""
-    from git_engram.evals.dataset import DEV_QUERIES, TEST_V1_QUERIES, TEST_V2_QUERIES, TEST_V3_QUERIES, TEST_V4_QUERIES
+    from git_engram.evals.dataset import (
+        DEV_QUERIES,
+        TEST_V1_QUERIES,
+        TEST_V2_QUERIES,
+        TEST_V3_QUERIES,
+        TEST_V4_QUERIES,
+        TEST_V5_QUERIES,
+    )
 
-    splits = [DEV_QUERIES, TEST_V1_QUERIES, TEST_V2_QUERIES, TEST_V3_QUERIES, TEST_V4_QUERIES]
+    splits = [DEV_QUERIES, TEST_V1_QUERIES, TEST_V2_QUERIES, TEST_V3_QUERIES, TEST_V4_QUERIES, TEST_V5_QUERIES]
     for i, a in enumerate(splits):
         for b in splits[i + 1 :]:
             assert not {q.qid for q in a} & {q.qid for q in b}
             assert not {q.text for q in a} & {q.text for q in b}
-    for split in (TEST_V1_QUERIES, TEST_V2_QUERIES, TEST_V3_QUERIES, TEST_V4_QUERIES):
+    for split in (TEST_V1_QUERIES, TEST_V2_QUERIES, TEST_V3_QUERIES, TEST_V4_QUERIES, TEST_V5_QUERIES):
         cats = {}
         for q in split:
             cats[q.category] = cats.get(q.category, 0) + 1
         assert set(cats.values()) == {6}
     assert len({q.category for q in TEST_V4_QUERIES}) == 5
+    assert len({q.category for q in TEST_V5_QUERIES}) == 5
     e = shopfront.engine
     keys = {r["doc_key"] for r in e.db.query("SELECT doc_key FROM documents")}
     paths = {r["path"] for r in e.db.query("SELECT path FROM files")}
-    for q in DEV_QUERIES + TEST_V1_QUERIES + TEST_V2_QUERIES + TEST_V3_QUERIES + TEST_V4_QUERIES:
+    for q in DEV_QUERIES + TEST_V1_QUERIES + TEST_V2_QUERIES + TEST_V3_QUERIES + TEST_V4_QUERIES + TEST_V5_QUERIES:
         for target in q.relevant:
             if target.startswith("commit:"):
                 assert shopfront.info.commit_by_prefix(target[7:]), target
@@ -98,9 +106,15 @@ def test_no_test_file_contains_held_out_query_text():
     import re
     from pathlib import Path
 
-    from git_engram.evals.dataset import TEST_V1_QUERIES, TEST_V2_QUERIES, TEST_V3_QUERIES, TEST_V4_QUERIES
+    from git_engram.evals.dataset import (
+        TEST_V1_QUERIES,
+        TEST_V2_QUERIES,
+        TEST_V3_QUERIES,
+        TEST_V4_QUERIES,
+        TEST_V5_QUERIES,
+    )
 
-    held_out = {q.text for q in TEST_V1_QUERIES + TEST_V2_QUERIES + TEST_V3_QUERIES + TEST_V4_QUERIES}
+    held_out = {q.text for q in TEST_V1_QUERIES + TEST_V2_QUERIES + TEST_V3_QUERIES + TEST_V4_QUERIES + TEST_V5_QUERIES}
     for path in Path(__file__).parent.glob("*.py"):
         source = path.read_text(encoding="utf-8")
         for text in held_out:
