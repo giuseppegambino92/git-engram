@@ -1,4 +1,4 @@
-from git_engram.evals.dataset import QUERIES
+from git_engram.evals.dataset import DEV_QUERIES as QUERIES
 from git_engram.evals.metrics import RankedDoc, first_ranks, ndcg_at, percentile, recall_at, reciprocal_rank
 
 
@@ -34,16 +34,21 @@ def test_benchmark_end_to_end(tmp_path):
     from git_engram.evals.benchmark_runner import run_benchmark
 
     payload = run_benchmark(workdir=tmp_path, repeats=1, scale=True, sizes=(2000,))
-    results = {r["name"]: r for r in payload["results"]}
-    ours = results["**git-engram** (full)"]
-    for name, r in results.items():
-        if r is not ours:
-            assert ours["ndcg5"] >= r["ndcg5"], name
-            assert ours["cochange"] >= r["cochange"], name
-    assert ours["neg_hit"] >= 0.8 and ours["p95_ms"] < 50
+    # Calibration contract: on the dev split the full system must not lose to any baseline.
+    dev = {r["name"]: r for r in payload["results_dev"]}
+    ours = dev["**git-engram** (full)"]
+    for name, r in dev.items():
+        assert ours["ndcg5"] >= r["ndcg5"], name
+        assert ours["cochange"] >= r["cochange"], name
+    assert ours["neg_hit"] >= 0.8
+    # Held-out split: only structural checks here (its numbers are reported, never asserted/tuned against).
+    test = {r["name"]: r for r in payload["results"]}
+    assert set(test) == set(dev) and all(len(r["per_query"]) == 24 for r in test.values())
+    assert test["**git-engram** (full)"]["p95_ms"] < 50
     assert payload["preflight"]["p50_ms"] < 20
     assert payload["scale"][0]["recall@10_same_dim"] > 0.8
-    assert "| **git-engram** (full) |" in payload["markdown"] and "Ablation study" in payload["markdown"]
+    md = payload["markdown"]
+    assert "Held-out test split" in md and "Dev / calibration split" in md and "query-adaptive router" in md
 
 
 def test_splits_are_disjoint_and_ground_truth_exists(shopfront):

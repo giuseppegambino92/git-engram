@@ -43,7 +43,7 @@ from dataclasses import replace
 
 from ..retrieval.engine import BM25_ONLY, DENSE_F32, FULL, HYBRID, RetrievalMode
 from ..security.sanitizer import ContextFirewall
-from .dataset import QUERIES, EvalQuery
+from .dataset import DEV_QUERIES, TEST_QUERIES, EvalQuery
 from .fixture import build_shopfront, populate_memory
 from .metrics import RankedDoc, first_ranks, ndcg_at, percentile, recall_at, reciprocal_rank
 
@@ -61,6 +61,7 @@ ABLATIONS: list[tuple[str, RetrievalMode]] = [
     ("- MMR file diversity", replace(FULL, name="no-diversity", diversify=False)),
     ("- time decay (plain RRF)", replace(FULL, name="no-td", time_decay=False)),
     ("float32 exact instead of 1-bit+int8", replace(FULL, name="f32", vector="float32")),
+    ("- query-adaptive router (fixed weights)", replace(FULL, name="no-router", route=False)),
 ]
 
 
@@ -111,9 +112,11 @@ def evaluate(
     failure_ids: dict[str, int],
     repeats: int = 15,
     configs: list[tuple[str, RetrievalMode]] | None = None,
+    queries: list[EvalQuery] | None = None,
 ) -> list[ConfigResult]:
+    queries = queries if queries is not None else TEST_QUERIES
     commit_keys = {}
-    for q in QUERIES:
+    for q in queries:
         for t in q.relevant:
             if t.startswith("commit:"):
                 commit_keys[t] = f"commit:{info.commit_by_prefix(t[7:])}"
@@ -126,7 +129,7 @@ def evaluate(
         cats: dict[str, list[dict]] = defaultdict(list)
         latencies: list[float] = []
         neg_total = neg_hits = fa_total = fa_hits = cpl_total = cpl_hits = 0
-        for q in QUERIES:
+        for q in queries:
             text = _resolve_query(q, info)
             if mode.negative:
                 resp = engine.search(text, top_k=20, mode=mode)
@@ -328,22 +331,8 @@ def security_benchmark(firewall: ContextFirewall) -> dict:
     }
 
 
-def render_markdown(
-    results: list[ConfigResult],
-    scale: list[dict],
-    sec: dict,
-    meta: dict,
-    ablations: list[ConfigResult] | None = None,
-    preflight: dict | None = None,
-) -> str:
+def _main_table(results: list[ConfigResult]) -> list[str]:
     lines = [
-        "## Benchmark: git-engram vs. standard RAG",
-        "",
-        f"Fixture: `shopfront` synthetic monorepo -- {meta['commits']} commits, {meta['files']} files, "
-        f"{meta['documents']} indexed documents, {meta['failures']} graveyard failures, {len(QUERIES)} ground-truth "
-        f"queries (8 causal, 8 regression, 8 coupled-file, 8 exact-identifier). Hardware: {meta['machine']}, "
-        f"Python {meta['python']}. Latency = warm, single-thread wall time per query over {meta['repeats']} repeats.",
-        "",
         "| Configuration | Recall@3 | Recall@5 | MRR | nDCG@5 | Neg. Warning Hit | False Alarms | Co-Change Disc. "
         "| Index RAM (KB) | P50 (ms) | P95 (ms) |",
         "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
@@ -354,27 +343,69 @@ def render_markdown(
             f"{r.neg_hit:.0%} | {r.false_alarm:.0%} | {r.cochange:.0%} | {r.ram_kb:,.1f} | {r.p50_ms:.2f} | "
             f"{r.p95_ms:.2f} |"
         )
+    return lines
+
+
+def _category_table(results: list[ConfigResult]) -> list[str]:
     cats = list(results[0].per_category)
-    lines += [
-        "",
-        "### nDCG@5 by query category",
-        "",
-        "| Configuration | " + " | ".join(cats) + " |",
-        "|---|" + "---:|" * len(cats),
-    ]
+    lines = ["| nDCG@5 | " + " | ".join(cats) + " |", "|---|" + "---:|" * len(cats)]
     for r in results:
         lines.append(f"| {r.name} | " + " | ".join(f"{r.per_category[c]['ndcg5']:.3f}" for c in cats) + " |")
+    return lines
+
+
+def render_markdown(
+    results: list[ConfigResult],
+    scale: list[dict],
+    sec: dict,
+    meta: dict,
+    ablations: list[tuple[ConfigResult, ConfigResult]] | None = None,
+    preflight: dict | None = None,
+    dev_results: list[ConfigResult] | None = None,
+) -> str:
+    routes = meta.get("router_classes", {})
+    lines = [
+        "## Benchmark: git-engram vs. standard RAG",
+        "",
+        f"Fixture: `shopfront` synthetic monorepo -- {meta['commits']} commits, {meta['files']} files, "
+        f"{meta['documents']} indexed documents, {meta['failures']} graveyard failures. Hardware: {meta['machine']}, "
+        f"Python {meta['python']}. Latency = warm, single-thread wall time per query over {meta['repeats']} repeats.",
+        "",
+        f"### Held-out test split ({len(TEST_QUERIES)} unseen queries: 6 causal, 6 regression, 6 coupled-file, "
+        "6 exact-identifier)",
+        "",
+        "Written and committed before the query router existed; never used to choose any weight or threshold.",
+        "",
+        *_main_table(results),
+        "",
+        *_category_table(results),
+    ]
+    if routes:
+        lines += ["", "Router classes on the test split: " + ", ".join(f"{k} {v}" for k, v in sorted(routes.items()))]
+    if dev_results:
+        lines += [
+            "",
+            f"### Dev / calibration split ({len(DEV_QUERIES)} queries, 8 per category)",
+            "",
+            "Every weight and threshold was chosen while looking at these queries: scores are optimistic.",
+            "",
+            *_main_table(dev_results),
+            "",
+            *_category_table(dev_results),
+        ]
     if ablations:
         lines += [
             "",
             "### Ablation study (git-engram minus one component)",
             "",
-            "| Variant | Recall@5 | MRR | nDCG@5 | Co-Change Disc. | Neg. Warning Hit |",
-            "|---|---:|---:|---:|---:|---:|",
+            "| Variant | nDCG@5 dev | nDCG@5 test | Recall@5 test | MRR test | Co-Change Disc. test "
+            "| Neg. Warning Hit test |",
+            "|---|---:|---:|---:|---:|---:|---:|",
         ]
-        for r in ablations:
+        for dev, test in ablations:
             lines.append(
-                f"| {r.name} | {r.recall5:.3f} | {r.mrr:.3f} | {r.ndcg5:.3f} | {r.cochange:.0%} | {r.neg_hit:.0%} |"
+                f"| {test.name} | {dev.ndcg5:.3f} | {test.ndcg5:.3f} | {test.recall5:.3f} | {test.mrr:.3f} | "
+                f"{test.cochange:.0%} | {test.neg_hit:.0%} |"
             )
     if preflight:
         lines += [
@@ -392,11 +423,11 @@ def render_markdown(
             "Float32 P50 (ms) | Two-stage RAM (MB) | Float32 RAM (MB) |",
             "|---:|---:|---:|---:|---:|---:|---:|",
         ]
-        for s in scale:
+        for row in scale:
             lines.append(
-                f"| {s['n']:,} | {s['recall@10']:.3f} | {s['recall@10_same_dim']:.3f} | "
-                f"{s['two_stage_p50_ms']:.2f} | {s['float32_p50_ms']:.2f}"
-                f" | {s['two_stage_mb']:.1f} | {s['float32_mb']:.1f} |"
+                f"| {row['n']:,} | {row['recall@10']:.3f} | {row['recall@10_same_dim']:.3f} | "
+                f"{row['two_stage_p50_ms']:.2f} | {row['float32_p50_ms']:.2f}"
+                f" | {row['two_stage_mb']:.1f} | {row['float32_mb']:.1f} |"
             )
     lines += [
         "",
@@ -427,8 +458,20 @@ def run_benchmark(
         stats = engine.index()
         failure_ids = populate_memory(engine, info)
         build_s = time.perf_counter() - t0
-        results = evaluate(engine, info, failure_ids, repeats)
-        ablations = evaluate(engine, info, failure_ids, 1, ABLATIONS)
+        results = evaluate(engine, info, failure_ids, repeats, queries=TEST_QUERIES)
+        dev_results = evaluate(engine, info, failure_ids, 1, queries=DEV_QUERIES)
+        ablations = list(
+            zip(
+                evaluate(engine, info, failure_ids, 1, ABLATIONS, queries=DEV_QUERIES),
+                evaluate(engine, info, failure_ids, 1, ABLATIONS, queries=TEST_QUERIES),
+                strict=True,
+            )
+        )
+        from collections import Counter
+
+        from ..retrieval.router import classify
+
+        router_classes = dict(Counter(classify(_resolve_query(q, info)).klass for q in TEST_QUERIES))
         preflight = preflight_benchmark(engine)
         scale_rows = scale_benchmark(engine, sizes) if scale else []
         sec = security_benchmark(engine.firewall)
@@ -442,12 +485,21 @@ def run_benchmark(
             "repeats": repeats,
             "build_and_index_s": round(build_s, 2),
             "index_timings_ms": {k: round(v, 1) for k, v in stats.timings_ms.items()},
+            "router_classes": router_classes,
         }
-        markdown = render_markdown(results, scale_rows, sec, meta, ablations, preflight)
+        markdown = render_markdown(results, scale_rows, sec, meta, ablations, preflight, dev_results)
         payload = {
             "meta": meta,
             "results": [r.__dict__ for r in results],
-            "ablations": [{k: v for k, v in r.__dict__.items() if k != "per_query"} for r in ablations],
+            "results_dev": [r.__dict__ for r in dev_results],
+            "ablations": [
+                {
+                    "name": t.name,
+                    "dev": {k: v for k, v in d.__dict__.items() if k != "per_query"},
+                    "test": {k: v for k, v in t.__dict__.items() if k != "per_query"},
+                }
+                for d, t in ablations
+            ],
             "preflight": preflight,
             "scale": scale_rows,
             "security": sec,
