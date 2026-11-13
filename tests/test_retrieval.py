@@ -1,0 +1,95 @@
+import math
+
+import pytest
+
+from git_engram.retrieval.engine import BM25_ONLY, DENSE_F32, FULL, HYBRID
+from git_engram.retrieval.fusion import recency_factor, td_rrf
+from git_engram.retrieval.graph import CoChangeGraph, Neighbor
+from git_engram.retrieval.lexical import fts_match_expression
+
+
+def test_td_rrf_math():
+    fused = td_rrf({"bm25": [1, 2], "vec": [2, 3]}, {"bm25": 1.0, "vec": 2.0}, k=60)
+    scores = {d: s for d, s, _ in fused}
+    assert scores[1] == pytest.approx(1 / 61)
+    assert scores[2] == pytest.approx(1 / 62 + 2 / 61)
+    assert scores[3] == pytest.approx(2 / 62)
+    assert [d for d, _, _ in fused] == [2, 3, 1]
+
+
+def test_time_decay_boost():
+    lam = math.log(2) / 100.0
+    assert recency_factor(100.0, 100.0, 0.5, lam) == pytest.approx(1.5)
+    assert recency_factor(0.0, 100.0, 0.5, lam) == pytest.approx(1.25)
+    assert recency_factor(None, 100.0, 0.5, lam) == 1.0
+    fused = td_rrf({"a": [1, 2]}, {"a": 1.0}, 60, {1: 0.0, 2: 1000.0}, 1000.0, 0.5, lam)
+    assert [d for d, _, _ in fused] == [2, 1]  # recent doc overtakes despite worse rank
+
+
+def test_spreading_activation_with_static_discount():
+    g = CoChangeGraph(
+        {
+            "file": {
+                "a": [Neighbor("b", 0.8, 1.0, 4, 0.0, False), Neighbor("c", 0.8, 1.0, 4, 0.0, True)],
+                "x": [Neighbor("b", 0.5, 1.0, 2, 0.0, False)],
+            },
+            "symbol": {},
+        }
+    )
+    act = g.spread({"a": 1.0, "x": 0.5}, "file", decay=0.5, min_weight=0.1, static_discount=0.5)
+    assert act["b"][0] == pytest.approx(0.5 * 1.0 * 0.8 + 0.5 * 0.5 * 0.5)
+    assert act["b"][1] == "a"
+    assert act["c"][0] == pytest.approx(0.5 * 0.8 * 0.5)
+
+
+def test_fts_expression_quotes_terms():
+    assert fts_match_expression(['a"b', "c"]) == '"a""b" OR "c"'
+
+
+@pytest.mark.parametrize(
+    "query,expected_key_part",
+    [
+        ("ERR_CART_STALE", "cart/service.py::CartStaleError"),
+        ("E4012", "gateway.py::user_message_for"),
+        ("why does TTLCache.get take the lock", "Revert"),
+    ],
+)
+def test_full_mode_finds_expected(shopfront, query, expected_key_part):
+    resp = shopfront.engine.search(query, top_k=5)
+    keys = [h.doc_key for h in resp.hits] + [h.title for h in resp.hits]
+    assert any(expected_key_part in k for k in keys), keys
+
+
+def test_failures_are_routed_to_negative_channel(shopfront):
+    resp = shopfront.engine.search("customers were billed twice after the payment provider timed out", top_k=8)
+    assert all(h.kind != "failure" for h in resp.hits)
+    assert shopfront.failure_ids["F2-idempotency"] in {w.failure_id for w in resp.warnings}
+    assert any(i.rule_id == "INV-PAY-001" for i in resp.invariants)
+
+
+def test_score_breakdown_and_latency_budget(shopfront):
+    e = shopfront.engine
+    e.search("clock skew token expiry")  # warm caches
+    resp = e.search("clock skew token expiry", top_k=5)
+    top = resp.hits[0]
+    assert top.bm25_rank is not None and top.vec_rank is not None and top.rerank_score is not None
+    assert top.hamming is not None and 0 <= top.hamming <= 256
+    assert resp.timings_ms["end_to_end"] < 50.0  # generous CI bound; typical warm latency is 1-5 ms
+
+
+@pytest.mark.parametrize("mode", [BM25_ONLY, DENSE_F32, HYBRID, FULL])
+def test_all_modes_return_results(shopfront, mode):
+    res = shopfront.engine.retriever.retrieve("idempotency key retry", 5, mode)
+    assert 0 < len(res.hits) <= 5
+
+
+def test_graph_path_surfaces_hidden_coupled_file(shopfront):
+    res = shopfront.engine.retriever.retrieve("tune the exponential Backoff delays of the queue worker", 10, FULL)
+    graph_hits = {h.path for h in res.hits if h.graph_rank}
+    assert "worker/config/worker.yaml" in graph_hits
+
+
+def test_file_hint_seeds_coupling(shopfront):
+    resp = shopfront.engine.search("add a field", top_k=5, file="backend/api/schemas.py")
+    surfaced = {c.target for c in resp.coupling} | {h.path for h in resp.hits}
+    assert {"mobile/src/parsers/orderParser.ts", "web/src/api/orderTypes.ts"} <= surfaced
