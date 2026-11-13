@@ -32,6 +32,7 @@ class RetrievalMode:
     negative: bool = True
     diversify: bool = True
     route: bool = True
+    slot_budget: bool = True
     exclude_kinds: frozenset[str] = frozenset({"failure"})
 
 
@@ -45,6 +46,7 @@ DENSE_F32 = RetrievalMode(
     rerank=False,
     negative=False,
     route=False,
+    slot_budget=False,
     exclude_kinds=frozenset(),
 )
 BM25_ONLY = RetrievalMode(
@@ -56,6 +58,7 @@ BM25_ONLY = RetrievalMode(
     rerank=False,
     negative=False,
     route=False,
+    slot_budget=False,
     exclude_kinds=frozenset(),
 )
 HYBRID = RetrievalMode(
@@ -67,6 +70,7 @@ HYBRID = RetrievalMode(
     rerank=False,
     negative=False,
     route=False,
+    slot_budget=False,
     exclude_kinds=frozenset(),
 )
 MODES = {m.name: m for m in (FULL, DENSE_F32, BM25_ONLY, HYBRID)}
@@ -281,6 +285,8 @@ class HybridRetriever:
             if mode.diversify:
                 head = self._diversify(head, rerank_scores)
             order = head + [d for d, _, _ in fused[cfg.rerank_top_n :]]
+        if mode.slot_budget:
+            order = self._slot_budget(order, profile.klass if profile else "general")
         timings["rerank"] = (time.perf_counter() - t4) * 1000
 
         fused_map = {d: (s, rf) for d, s, rf in fused}
@@ -317,8 +323,71 @@ class HybridRetriever:
                     rerank_score=rerank_scores.get(d),
                 )
             )
+        if mode.slot_budget and cfg.attach_commits > 0:
+            self._attach_commits(hits, order[: cfg.rerank_top_n])
         timings["total"] = (time.perf_counter() - t0) * 1000
         return RetrievalResult(hits, q, timings, seed_files, profile)
+
+    def _slot_budget(self, order: list[int], klass: str) -> list[int]:
+        """Stratified top-K: commit capsules may hold at most ``commit_slots[klass]`` of the first ``slot_window``
+        positions. Excess commits are deferred (not dropped) to just after the window, keeping their order."""
+        window = self.cfg.slot_window
+        cap = self.cfg.commit_slots.get(klass, window)
+        head: list[int] = []
+        deferred: list[int] = []
+        used = 0
+        i = 0
+        while i < len(order) and len(head) < window:
+            d = order[i]
+            i += 1
+            if self.meta[d].kind == "commit":
+                if used >= cap:
+                    deferred.append(d)
+                    continue
+                used += 1
+            head.append(d)
+        return head + deferred + order[i:]
+
+    def _attach_commits(self, hits: list[Hit], candidates: list[int]) -> None:
+        """Parent-symbol attachment: each code hit carries the commits that modified it, preferring commits that were
+        themselves retrieval candidates, so causal context survives even when a capsule gave up its slot."""
+        targets = [(h.path, h.symbol) for h in hits if h.kind == "symbol" and h.path and h.symbol]
+        if not targets:
+            return
+        cand_rank = {self.meta[d].doc_key[7:]: r for r, d in enumerate(candidates) if self.meta[d].kind == "commit"}
+        placeholders = ",".join("(?, ?)" for _ in targets)
+        rows = self.db.query(
+            "SELECT sc.path, sc.qualname, c.hash, c.subject, c.intent, c.ts FROM symbol_commits sc "
+            f"JOIN commits c ON c.hash = sc.hash WHERE (sc.path, sc.qualname) IN (VALUES {placeholders})",
+            [x for pair in targets for x in pair],
+        )
+        by_symbol: dict[tuple[str, str], list] = defaultdict(list)
+        for r in rows:
+            by_symbol[(r["path"], r["qualname"])].append(r)
+        shown = {h.doc_key for h in hits}
+        load_bearing = {"bugfix", "security", "revert"}
+        for h in hits:
+            commits = by_symbol.get((h.path, h.symbol), [])
+            ranked = sorted(
+                commits,
+                key=lambda r: (
+                    r["hash"] not in cand_rank,
+                    cand_rank.get(r["hash"], 0),
+                    r["intent"] not in load_bearing,
+                    -r["ts"],
+                ),
+            )
+            picked = [r for r in ranked if r["hash"] in cand_rank or r["intent"] in load_bearing]
+            h.attached_commits = [
+                {
+                    "hash": r["hash"],
+                    "subject": r["subject"],
+                    "intent": r["intent"],
+                    "ts": r["ts"],
+                    "also_listed": f"commit:{r['hash']}" in shown,
+                }
+                for r in picked[: self.cfg.attach_commits]
+            ]
 
     def _diversify(self, ranked: list[int], scores: dict[int, float]) -> list[int]:
         """Greedy MMR over file identity: each already-selected code doc from the same file costs

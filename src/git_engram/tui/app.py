@@ -205,6 +205,11 @@ class EngramApp(App):
                 title=h.kind,
             ),
         ]
+        if h.attached_commits:
+            why = Table("commit", "intent", "why this code exists", title="attached history", expand=True)
+            for c in h.attached_commits:
+                why.add_row(c["hash"][:10], c["intent"], c["subject"])
+            parts.append(why)
         for w in resp.warnings:
             parts.append(
                 Panel(

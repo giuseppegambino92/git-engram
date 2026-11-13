@@ -173,6 +173,8 @@ def render_search(resp: SearchResponse) -> str:
         )
         lines.append(f"    {h.title}")
         lines.extend(f"    {ln}" for ln in h.snippet.splitlines()[:10])
+        for c in h.attached_commits:
+            lines.append(f"    why: {_date(c['ts'])} {c['hash'][:10]} [{c['intent']}] {c['subject']}")
         lines.append("  </result>")
     lines.append("</results>")
     lines += render_coupling(resp.coupling)

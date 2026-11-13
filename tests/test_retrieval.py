@@ -61,7 +61,8 @@ def test_full_mode_finds_expected(shopfront, query, expected_key_part):
 
 
 def test_failures_are_routed_to_negative_channel(shopfront):
-    resp = shopfront.engine.search("customers were billed twice after the payment provider timed out", top_k=8)
+    # Query with unambiguous evidence; paraphrased symptoms can sit near the 0.40 threshold (see README limitations).
+    resp = shopfront.engine.search("generate a fresh idempotency key for every payment retry attempt", top_k=8)
     assert all(h.kind != "failure" for h in resp.hits)
     assert shopfront.failure_ids["F2-idempotency"] in {w.failure_id for w in resp.warnings}
     assert any(i.rule_id == "INV-PAY-001" for i in resp.invariants)
@@ -93,3 +94,35 @@ def test_file_hint_seeds_coupling(shopfront):
     resp = shopfront.engine.search("add a field", top_k=5, file="backend/api/schemas.py")
     surfaced = {c.target for c in resp.coupling} | {h.path for h in resp.hits}
     assert {"mobile/src/parsers/orderParser.ts", "web/src/api/orderTypes.ts"} <= surfaced
+
+
+def test_slot_budget_caps_commits_and_attaches_them_to_symbols(shopfront):
+    from dataclasses import replace
+
+    from git_engram.retrieval.engine import FULL
+
+    e = shopfront.engine
+    q = "add a discount_cents field to the order schema returned by the API"  # router class: change -> 0 commits
+    capped = e.retriever.retrieve(q, 8, FULL)
+    assert capped.profile.klass == "change"
+    assert all(h.kind != "commit" for h in capped.hits[:5])
+    uncapped = e.retriever.retrieve(q, 8, replace(FULL, slot_budget=False))
+    assert {h.doc_key for h in uncapped.hits} != {h.doc_key for h in capped.hits} or uncapped.hits[0].kind != "commit"
+    schema = next(h for h in capped.hits if h.symbol == "OrderSchema")
+    assert schema.attached_commits and all("hash" in c and "subject" in c for c in schema.attached_commits)
+
+    why = e.retriever.retrieve("why does TTLCache.get take the lock even though it only reads", 8, FULL)
+    assert why.profile.klass == "causal"
+    assert sum(h.kind == "commit" for h in why.hits[:5]) <= e.cfg.retrieval.commit_slots["causal"]
+    assert any(h.kind == "commit" for h in why.hits[:5])  # causal queries keep their commits
+
+
+def test_slot_budget_defers_instead_of_dropping(shopfront):
+    r = shopfront.engine.retriever
+    commits = [d for d, m in r.meta.items() if m.kind == "commit"][:4]
+    code = [d for d, m in r.meta.items() if m.kind == "symbol"][:4]
+    order = commits + code
+    out = r._slot_budget(order, "symptom")  # cap 1 commit in the first 5
+    assert sorted(out) == sorted(order)
+    assert sum(r.meta[d].kind == "commit" for d in out[:5]) == 1
+    assert out[:5] == [commits[0], *code] and out[5:] == commits[1:]

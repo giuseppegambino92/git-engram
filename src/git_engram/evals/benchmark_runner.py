@@ -43,7 +43,7 @@ from dataclasses import replace
 
 from ..retrieval.engine import BM25_ONLY, DENSE_F32, FULL, HYBRID, RetrievalMode
 from ..security.sanitizer import ContextFirewall
-from .dataset import DEV_QUERIES, TEST_QUERIES, EvalQuery
+from .dataset import DEV_QUERIES, TEST_QUERIES, TEST_V1_QUERIES, TEST_V2_QUERIES, EvalQuery
 from .fixture import build_shopfront, populate_memory
 from .metrics import RankedDoc, first_ranks, ndcg_at, percentile, recall_at, reciprocal_rank
 
@@ -62,6 +62,7 @@ ABLATIONS: list[tuple[str, RetrievalMode]] = [
     ("- time decay (plain RRF)", replace(FULL, name="no-td", time_decay=False)),
     ("float32 exact instead of 1-bit+int8", replace(FULL, name="f32", vector="float32")),
     ("- query-adaptive router (fixed weights)", replace(FULL, name="no-router", route=False)),
+    ("- commit slot budget (unconstrained top-k)", replace(FULL, name="no-slots", slot_budget=False)),
 ]
 
 
@@ -362,6 +363,7 @@ def render_markdown(
     ablations: list[tuple[ConfigResult, ConfigResult]] | None = None,
     preflight: dict | None = None,
     dev_results: list[ConfigResult] | None = None,
+    v1_results: list[ConfigResult] | None = None,
 ) -> str:
     routes = meta.get("router_classes", {})
     lines = [
@@ -371,17 +373,30 @@ def render_markdown(
         f"{meta['documents']} indexed documents, {meta['failures']} graveyard failures. Hardware: {meta['machine']}, "
         f"Python {meta['python']}. Latency = warm, single-thread wall time per query over {meta['repeats']} repeats.",
         "",
-        f"### Held-out test split ({len(TEST_QUERIES)} unseen queries: 6 causal, 6 regression, 6 coupled-file, "
-        "6 exact-identifier)",
+        f"### Held-out test split v2 ({len(TEST_V2_QUERIES)} unseen queries: 6 causal, 6 regression, "
+        "6 coupled-file, 6 exact-identifier)",
         "",
-        "Written and committed before the query router existed; never used to choose any weight or threshold.",
+        "Committed (with a fixture extension) before the commit slot-budget fix existed; never used to choose any "
+        "weight or threshold. Half of it targets facts no other split mentions.",
         "",
         *_main_table(results),
         "",
         *_category_table(results),
     ]
     if routes:
-        lines += ["", "Router classes on the test split: " + ", ".join(f"{k} {v}" for k, v in sorted(routes.items()))]
+        lines += ["", "Router classes on the v2 split: " + ", ".join(f"{k} {v}" for k, v in sorted(routes.items()))]
+    if v1_results:
+        lines += [
+            "",
+            f"### Retired held-out split v1 ({len(TEST_V1_QUERIES)} queries)",
+            "",
+            "Unseen when first reported; its per-query results were then used to diagnose commit-capsule crowding, "
+            "so it is no longer held-out. Shown for continuity only.",
+            "",
+            *_main_table(v1_results),
+            "",
+            *_category_table(v1_results),
+        ]
     if dev_results:
         lines += [
             "",
@@ -398,8 +413,7 @@ def render_markdown(
             "",
             "### Ablation study (git-engram minus one component)",
             "",
-            "| Variant | nDCG@5 dev | nDCG@5 test | Recall@5 test | MRR test | Co-Change Disc. test "
-            "| Neg. Warning Hit test |",
+            "| Variant | nDCG@5 dev | nDCG@5 v2 | Recall@5 v2 | MRR v2 | Co-Change Disc. v2 | Neg. Warning Hit v2 |",
             "|---|---:|---:|---:|---:|---:|---:|",
         ]
         for dev, test in ablations:
@@ -458,12 +472,13 @@ def run_benchmark(
         stats = engine.index()
         failure_ids = populate_memory(engine, info)
         build_s = time.perf_counter() - t0
-        results = evaluate(engine, info, failure_ids, repeats, queries=TEST_QUERIES)
+        results = evaluate(engine, info, failure_ids, repeats, queries=TEST_V2_QUERIES)
+        v1_results = evaluate(engine, info, failure_ids, 1, queries=TEST_V1_QUERIES)
         dev_results = evaluate(engine, info, failure_ids, 1, queries=DEV_QUERIES)
         ablations = list(
             zip(
                 evaluate(engine, info, failure_ids, 1, ABLATIONS, queries=DEV_QUERIES),
-                evaluate(engine, info, failure_ids, 1, ABLATIONS, queries=TEST_QUERIES),
+                evaluate(engine, info, failure_ids, 1, ABLATIONS, queries=TEST_V2_QUERIES),
                 strict=True,
             )
         )
@@ -471,7 +486,7 @@ def run_benchmark(
 
         from ..retrieval.router import classify
 
-        router_classes = dict(Counter(classify(_resolve_query(q, info)).klass for q in TEST_QUERIES))
+        router_classes = dict(Counter(classify(_resolve_query(q, info)).klass for q in TEST_V2_QUERIES))
         preflight = preflight_benchmark(engine)
         scale_rows = scale_benchmark(engine, sizes) if scale else []
         sec = security_benchmark(engine.firewall)
@@ -487,11 +502,12 @@ def run_benchmark(
             "index_timings_ms": {k: round(v, 1) for k, v in stats.timings_ms.items()},
             "router_classes": router_classes,
         }
-        markdown = render_markdown(results, scale_rows, sec, meta, ablations, preflight, dev_results)
+        markdown = render_markdown(results, scale_rows, sec, meta, ablations, preflight, dev_results, v1_results)
         payload = {
             "meta": meta,
             "results": [r.__dict__ for r in results],
             "results_dev": [r.__dict__ for r in dev_results],
+            "results_v1_retired": [r.__dict__ for r in v1_results],
             "ablations": [
                 {
                     "name": t.name,

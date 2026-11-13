@@ -44,11 +44,13 @@ def test_benchmark_end_to_end(tmp_path):
     # Held-out split: only structural checks here (its numbers are reported, never asserted/tuned against).
     test = {r["name"]: r for r in payload["results"]}
     assert set(test) == set(dev) and all(len(r["per_query"]) == 24 for r in test.values())
+    assert all(len(r["per_query"]) == 24 for r in payload["results_v1_retired"])
     assert test["**git-engram** (full)"]["p95_ms"] < 50
     assert payload["preflight"]["p50_ms"] < 20
     assert payload["scale"][0]["recall@10_same_dim"] > 0.8
     md = payload["markdown"]
-    assert "Held-out test split" in md and "Dev / calibration split" in md and "query-adaptive router" in md
+    assert "Held-out test split v2" in md and "Retired held-out split v1" in md and "Dev / calibration" in md
+    assert "commit slot budget" in md
 
 
 def test_splits_are_disjoint_and_ground_truth_exists(shopfront):

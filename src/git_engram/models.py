@@ -67,6 +67,7 @@ class Hit(BaseModel):
     graph_activation: float | None = None
     graph_via: str | None = None
     rerank_score: float | None = None
+    attached_commits: list[dict] = Field(default_factory=list)
 
 
 class CouplingAlert(BaseModel):

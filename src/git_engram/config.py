@@ -39,6 +39,12 @@ class RetrievalConfig(BaseModel):
     graph_min_weight: float = 0.15
     rerank_top_n: int = 30
     diversity_penalty: float = 0.10
+    # Slot budget: at most this many commit capsules inside the first ``slot_window`` results, per router class.
+    slot_window: int = 5
+    commit_slots: dict[str, int] = Field(
+        default_factory=lambda: {"causal": 3, "symptom": 1, "change": 0, "exact": 2, "general": 2}
+    )
+    attach_commits: int = 2
     rerank: bool = True
     cross_encoder_dir: str | None = None
     parallel: bool = True
