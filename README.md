@@ -10,9 +10,9 @@ served over the **Model Context Protocol** in ~2 ms. No LangChain, no LlamaIndex
 ![python](https://img.shields.io/badge/python-3.11%2B-3776AB)
 ![license](https://img.shields.io/badge/license-MIT-green)
 ![MCP](https://img.shields.io/badge/MCP-stdio%20server-7c3aed)
-![tests](https://img.shields.io/badge/tests-122%20passing-brightgreen)
+![tests](https://img.shields.io/badge/tests-124%20passing-brightgreen)
 ![frameworks](https://img.shields.io/badge/black--box%20frameworks-0-black)
-![latency](https://img.shields.io/badge/preflight%20P95-%3C5%20ms-orange)
+![latency](https://img.shields.io/badge/preflight%20P95-1.6%20ms-orange)
 
 </div>
 
@@ -81,89 +81,95 @@ The agent now knows the rule, why it exists, the exact patch that already failed
 ## Benchmark
 
 `git-engram benchmark` builds a reproducible synthetic monorepo (Python API, TypeScript web + mobile, Go worker,
-YAML/SQL/HTML) with 37 dated commits. It contains real-looking bugfixes, a perf "optimisation" that was reverted, five
-hidden cross-language couplings, a poisoned vendored file, and 7 failed agent attempts in the Graveyard.
+YAML/SQL/HTML) with 47 dated commits. It contains real-looking bugfixes, a perf "optimisation" that was reverted, six
+hidden cross-language couplings, a poisoned vendored file, and 9 failed agent attempts in the Graveyard.
 
 Every configuration sees **the same corpus, the same embedder and the same FTS5 index**. Baselines get the failure
 records as ordinary documents. For their ranking metrics, failures are filtered out (the most generous treatment);
 their warning hit-rate counts a relevant failure anywhere in the unfiltered top-5.
 
-### Held-out evaluation (the headline numbers)
+### Evaluation protocol
 
-The queries come in two splits ([`dataset.py`](src/git_engram/evals/dataset.py)):
+The queries come in three splits ([`dataset.py`](src/git_engram/evals/dataset.py)). The leak-free ordering can be
+checked with `git log`:
 
-- **Dev / calibration (32 queries).** Every weight, threshold and design choice was made while looking at these, so
-  their scores are optimistic by construction.
-- **Held-out test (24 queries, 6 per category).** Written and committed in
-  [`6c03c3c`](#dogfooding-git-engram-on-itself) *before* the query router existed. Validated only structurally (every
-  target exists in the index), and never run through retrieval until the final benchmark. Many target facts the dev
-  split never asks about, and the coupled-file queries approach each coupling from the opposite side.
+| split | queries | status | committed in |
+|---|---:|---|---|
+| dev / calibration | 32 | every weight, threshold and design choice was made looking at these | `54dc0c0` |
+| held-out **v1** | 24 | unseen when first reported; then used to diagnose commit crowding, so now **retired** | `d049d5e`, before the router (`1a7d202`) |
+| held-out **v2** | 24 | **headline**: half on a fixture extension no other split mentions; validated only structurally | `f32fee5`, before the slot-budget fix (`06e7d44`) |
 
-**Held-out test split, 24 unseen queries:**
+### Held-out v2: 24 unseen queries (headline)
 
 | Configuration | Recall@3 | Recall@5 | MRR | nDCG@5 | Neg. Warning Hit | False Alarms | Co-Change Disc. | Index RAM (KB) | P50 (ms) | P95 (ms) |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| Dense RAG (float32 cosine) | 0.632 | 0.771 | 0.751 | 0.682 | **100%** | 5% | 33% | 229.5 | 0.19 | 0.27 |
-| BM25 only (SQLite FTS5) | 0.625 | **0.785** | 0.830 | 0.743 | 80% | **0%** | 33% | **47.0** | 0.47 | 0.65 |
-| Hybrid (BM25 + float32, RRF) | 0.632 | 0.764 | 0.801 | 0.733 | 80% | 5% | 33% | 276.5 | 0.65 | 0.89 |
-| **git-engram** (full) | **0.708** | 0.722 | **0.931** | **0.792** | **100%** | **0%** | **67%** | 95.5 | 2.68 | 3.93 |
+| Dense RAG (float32 cosine) | 0.708 | 0.812 | 0.894 | 0.748 | **100%** | 11% | 33% | 268.5 | 0.16 | 0.19 |
+| BM25 only (SQLite FTS5) | **0.771** | 0.833 | 0.874 | 0.784 | 83% | **0%** | 33% | **55.5** | 0.25 | 0.34 |
+| Hybrid (BM25 + float32, RRF) | **0.771** | 0.833 | 0.887 | 0.781 | **100%** | 6% | 50% | 324.0 | 0.31 | 0.41 |
+| **git-engram** (full) | **0.771** | **0.854** | **0.903** | **0.854** | **100%** | 17% | **83%** | 112.0 | 1.44 | 1.91 |
 
-| nDCG@5, held-out | causal "why" | regression | coupled-file | error-code |
+| nDCG@5, held-out v2 | causal "why" | regression | coupled-file | error-code |
 |---|---:|---:|---:|---:|
-| Dense RAG (float32) | 0.661 | 0.685 | 0.526 | 0.857 |
-| BM25 only | 0.781 | **0.827** | 0.565 | 0.800 |
-| Hybrid (BM25 + float32) | 0.757 | 0.767 | 0.546 | **0.863** |
-| **git-engram** | **0.902** | 0.786 | **0.667** | 0.812 |
+| Dense RAG (float32) | 0.800 | 0.708 | 0.599 | 0.885 |
+| BM25 only | 0.857 | 0.804 | 0.573 | **0.903** |
+| Hybrid (BM25 + float32) | 0.811 | 0.792 | 0.637 | 0.885 |
+| **git-engram** | **0.896** | **0.806** | **0.845** | 0.868 |
 
-**Dev split (32 queries; optimistic):** git-engram reaches nDCG@5 **0.829** vs 0.739 for BM25 and 0.704 for hybrid,
-and **beats BM25 on regression queries, 0.913 vs 0.907**. Full table: [`benchmarks/RESULTS.md`](benchmarks/RESULTS.md).
+**Retired v1** (24 queries, no longer unseen): git-engram nDCG@5 **0.826** vs 0.745 for BM25, Recall@5 **0.806** vs
+0.785, regression 0.824 vs 0.827, false alarms 32%. **Dev** (32 queries, optimistic): nDCG@5 **0.837** vs 0.740.
+Full tables: [`benchmarks/RESULTS.md`](benchmarks/RESULTS.md).
 
-**Ablations:** each row removes one component, measured on both splits.
+**Ablations:** each row removes one component, measured on dev and held-out v2.
 
-| Variant | nDCG@5 dev | nDCG@5 **test** | Recall@5 test | MRR test | Co-Change Disc. test | Neg. Warning Hit test |
+| Variant | nDCG@5 dev | nDCG@5 **v2** | Recall@5 v2 | MRR v2 | Co-Change Disc. v2 | Neg. Warning Hit v2 |
 |---|---:|---:|---:|---:|---:|---:|
-| git-engram (full) | 0.829 | 0.792 | 0.722 | 0.931 | 67% | 100% |
-| − query-adaptive router (fixed weights) | 0.793 | 0.759 | 0.729 | 0.882 | 67% | 100% |
-| − co-change graph path | 0.785 | 0.790 | 0.729 | 0.918 | 50% | 100% |
-| − interaction reranker | 0.647 | 0.464 | 0.597 | 0.521 | 67% | 80% |
-| − MMR file diversity | 0.831 | 0.825 | 0.778 | 0.931 | 67% | 100% |
-| − time decay (plain RRF) | 0.802 | 0.806 | 0.743 | 0.944 | 83% | 100% |
-| float32 exact instead of 1-bit + int8 | 0.829 | 0.792 | 0.722 | 0.931 | 67% | 100% |
+| git-engram (full) | 0.837 | 0.854 | 0.854 | 0.903 | 83% | 100% |
+| − commit slot budget (unconstrained top-k) | 0.800 | 0.816 | 0.792 | 0.896 | 50% | 100% |
+| − query-adaptive router (fixed weights) | 0.773 | 0.831 | 0.833 | 0.897 | 67% | 100% |
+| − co-change graph path | 0.829 | 0.863 | 0.854 | 0.924 | 83% | 100% |
+| − interaction reranker | 0.572 | 0.712 | 0.938 | 0.734 | 83% | 100% |
+| − MMR file diversity | 0.836 | 0.866 | 0.938 | 0.899 | 83% | 100% |
+| − time decay (plain RRF) | 0.839 | 0.854 | 0.854 | 0.903 | 83% | 100% |
+| float32 exact instead of 1-bit + int8 | 0.837 | 0.854 | 0.854 | 0.903 | 83% | 100% |
 
-**`engram_preflight_check` latency:** P50 **2.29 ms**, P95 **4.15 ms** (warm MCP server, 7 targets × 30 runs).
+**`engram_preflight_check` latency:** P50 **1.16 ms**, P95 **1.59 ms** (warm MCP server, 7 targets × 30 runs).
 
 **Two-stage quantized search at scale** (synthetic Dirichlet topic mixtures of the corpus embeddings, 400 candidates):
 
 | Vectors | Recall@10 vs float32-384d | Recall@10 vs float32-256d | Two-stage P50 | float32 P50 | Two-stage RAM | float32 RAM |
 |---:|---:|---:|---:|---:|---:|---:|
-| 10,000 | 0.831 | 0.982 | 0.26 ms | 0.35 ms | 2.8 MB | 14.6 MB |
-| 100,000 | 0.738 | 0.968 | **0.98 ms** | 3.79 ms | **27.8 MB** | 146.5 MB |
+| 10,000 | 0.844 | 0.985 | 0.18 ms | 0.24 ms | 2.8 MB | 14.6 MB |
+| 100,000 | 0.746 | 0.976 | **0.60 ms** | 2.35 ms | **27.8 MB** | 146.5 MB |
 
 **Context firewall:** 12/12 injection payloads detected and neutralised; 0/12 benign snippets modified.
 
-Apple M-series, Python 3.14, single thread. Latencies vary about 2× between runs on the same machine depending on
+Apple M-series, Python 3.14, single thread. Latencies vary up to ~2× between runs on the same machine depending on
 load; quality metrics are deterministic. Raw numbers: [`benchmarks/RESULTS.md`](benchmarks/RESULTS.md),
 [`benchmarks/results.json`](benchmarks/results.json). Reproduce with `git-engram benchmark`.
 
 ### Reading the numbers honestly
 
-- **What generalises.** On unseen queries git-engram keeps the best nDCG@5 (+0.05 over BM25), MRR (+0.10) and
-  Recall@3. Causal "why" queries gain +0.12 nDCG@5, coupled-file queries +0.10, and hidden-coupling discovery doubles.
-  It warns about 100% of relevant past failures with zero false alarms, and the query router adds +0.033 nDCG@5 on
-  the held-out split.
-- **What did not generalise.** The router closed the regression gap on dev (0.913 vs BM25 0.907) but **not on the
-  held-out split (0.786 vs 0.827)**. git-engram also has the *lowest* held-out Recall@5. The per-query diagnosis is
-  consistent: commit capsules crowd code out of the top 5 (often 3–4 of 5 slots), so the target function lands at
-  rank 6+ or loses to its file's `<module>` chunk. MMR only diversifies within a file's code documents, never across
-  document kinds, and the router's "symptom → prefer commits" intent amplifies the effect.
-- **Overfitting the held-out split exposed.** Removing MMR diversity (+0.033) or time decay (+0.014) *improves*
-  held-out nDCG@5, although both looked neutral-to-helpful on dev. They stay enabled because changing them now would
-  be tuning on the test split. The fix (kind-aware diversification) is the next step, and it needs a fresh held-out
-  set before it can be claimed.
-- **Quantization is free here.** On both splits the two-stage 1-bit → int8 search gives *identical* metrics to exact
-  float32. At 100k vectors it keeps 97% of the same-dimension float32 top-10 in 5.3× less RAM and runs ~4× faster.
-- **Still synthetic.** One generated repository with a 56-query evaluation. Treat the numbers as evidence for the
-  mechanisms, not as a universal leaderboard.
+- **The slot-budget fix generalised.** On unseen v2 queries it is the largest positive ablation (+0.038 nDCG@5,
+  +0.062 Recall@5, +33 pts co-change discovery). Recall@5 went from *worst* of all configurations on v1 to *best* on
+  v2, and regression queries now match BM25 (0.806 vs 0.804) instead of trailing it.
+- **What git-engram leads on.** nDCG@5 (+0.07 over the best baseline), Recall@5, MRR, causal queries, coupled-file
+  queries (+0.21) and hidden-coupling discovery (83% vs ≤50%).
+- **Where it does not.** Exact identifier queries (0.868 vs BM25 0.903), and Recall@3 is only a tie. **False alarms
+  rose to 17% on v2 (32% on retired v1)** while staying 0% on dev. The diagnosis: every false alarm comes from the
+  "failure targets a *file* in the top-3 results" evidence (+0.30) plus weak textual overlap. The slot budget puts
+  more code files in the top 3, so this coarse file-level anchoring now fires more often. The planned fix is to
+  anchor on the retrieved *symbol* instead of the file. Like every other fix, it will be tuned on dev and judged on a
+  fresh held-out set.
+- **Components the held-out splits argue against.** MMR file diversity lowered held-out nDCG@5 on *both* v1 and v2,
+  and the graph path is slightly negative on v2 nDCG (co-change discovery holds at 83% without it, because the slot
+  budget already frees room for coupled files). Dev disagrees on MMR (it costs co-change discovery there), so both stay
+  enabled until a dev-justified change can be validated on a new split.
+- **Router coverage.** Only 1 of the 6 v2 regression queries was classified `symptom`; most fell back to `general`
+  (phrasings such as "ran out of memory" or "redelivered forever" aren't in the surface rules).
+- **Quantization is free here.** On every split the two-stage 1-bit → int8 search gives *identical* metrics to exact
+  float32. At 100k vectors it keeps 98% of the same-dimension float32 top-10 in 5.3× less RAM and runs ~4× faster.
+- **Still synthetic.** One generated repository and 80 queries. Treat the numbers as evidence for the mechanisms,
+  not as a universal leaderboard.
 
 ---
 
@@ -296,6 +302,19 @@ Routing costs microseconds and never looks at the corpus. The weights were set o
 checked on the dev split only. The class and the weights used are returned with every search (`query_class`,
 `fusion_weights`) and shown by `git-engram query` and the TUI.
 
+### 4c. Commit slot budget and parent-symbol attachment
+
+Commit capsules are often the best lexical *and* semantic match for a question, so an unconstrained ranker can fill 3–4
+of the top 5 with them and push the code the agent must edit to rank 6+. The final top-k assembly is therefore
+**stratified**: at most $c_{\text{class}}$ commit capsules may occupy the first 5 slots, where
+
+$$c_{\text{causal}} = 3,\quad c_{\text{symptom}} = 1,\quad c_{\text{exact}} = c_{\text{general}} = 2,\quad c_{\text{change}} = 0 .$$
+
+Excess commits are **deferred** to rank 6+, never dropped. To keep the causal context those slots used to carry, every
+code hit gets **attached commits**: the commits that modified that exact symbol, preferring ones that were retrieval
+candidates and load-bearing (`bugfix`/`security`/`revert`). They render as `why:` lines under the result. The caps
+were chosen on the dev split only, and the benchmark metric does **not** credit attachments.
+
 ### 5. Negative RAG: the Graveyard Index
 
 `git-engram exec -- pytest -x` is a transparent wrapper: output is teed live and the exit code is preserved. On a
@@ -423,24 +442,28 @@ This repository is built as atomic commits (`git log --oneline`), so git-engram 
 
 ```console
 $ git-engram index .
-  files 72 · AST symbols 614 · commits 23 · documents 633 · parsers python-ast:59, text:13
-$ git-engram preflight src/git_engram/embeddings/vector_index.py -s QuantizedVectorIndex.search \
-      -i "binarize without the random rotation"
+  files 72 · AST symbols 640 · commits 26 · documents 640 · co-change edges file/symbol 30/78
+$ git-engram preflight src/git_engram/retrieval/engine.py -s HybridRetriever._slot_budget \
+      -i "drop the commit cap from top-k assembly"
 <ast_context>
-  method QuantizedVectorIndex.search  src/git_engram/embeddings/vector_index.py:L132-L159
-  blame ownership: b1f2fbcc [feature] 100%
+  method HybridRetriever._slot_budget  src/git_engram/retrieval/engine.py:L331-L349
+  blame ownership: 06e7d44d [feature] 100%
 </ast_context>
 <causal_history>
-  2026-11-13 b1f2fbcc67 [feature] feat(embeddings): hashing-LSA embedder, Matryoshka/int8/1-bit quantization ...
+  2026-11-13 06e7d44dd4 [feature] feat(retrieval): commit slot budget and parent-symbol commit attachment (+19 -0)
 </causal_history>
-<related_memory>
-  [symbol] function test_simhash_hamming_estimates_angle  (tests/test_quantization.py)
-  ...
+<co_change_coupling>
+  src/git_engram/retrieval/reranker.py  W=0.82  P(changes|target changes)=67%  co-commits=2  [import-linked]
+  src/git_engram/config.py  W=0.67  P(changes|target changes)=67%  co-commits=2  [import-linked]
+  src/git_engram/models.py  W=0.67  P(changes|target changes)=67%  co-commits=2  [import-linked]
+  src/git_engram/render.py  W=0.67  P(changes|target changes)=67%  co-commits=2  [import-linked]
+</co_change_coupling>
 ```
 
-The related memory surfaces the test that proves *why* the rotation exists, which is what an agent about to remove
-it needs to see. The held-out query set was committed in `6c03c3c`, before the router commit, so the ordering
-claimed in the benchmark section can be checked with `git log`.
+From its own history, git-engram learned that a change to the retrieval engine usually needs matching changes in
+`config.py`, `models.py` and `render.py`, which is exactly what the router and slot-budget commits had to do. The
+evaluation protocol is checkable the same way: `git log` shows each held-out split committed before the change it
+evaluates (see the table in the benchmark section).
 
 ## Configuration
 
@@ -467,7 +490,7 @@ Both run on raw ONNX Runtime + `tokenizers`, with no torch.
 
 ```bash
 uv venv && uv pip install -e ".[dev]"
-pytest -q                                    # 122 tests, fully offline (verified on Python 3.11 and 3.14)
+pytest -q                                    # 124 tests, fully offline (verified on Python 3.11 and 3.14)
 GIT_ENGRAM_NO_TREE_SITTER=1 pytest -q        # what CI runners without cached grammars execute
 ruff check src tests
 git-engram benchmark
@@ -479,7 +502,8 @@ across renames, the co-change formula against a hand computation, TD-RRF, spread
 through the real CLI, incremental re-indexing, the context firewall, OKF invariants, MCP tools in-process **and over
 a real stdio subprocess**, the query router, the Textual dashboard (headless), the dev/test split integrity, and the
 benchmark end to end. The benchmark test only asserts "beats every baseline" on the **dev** split; held-out numbers
-are reported, never asserted or tuned against.
+are reported, never asserted or tuned against. The slot budget has tests for its caps, for deferring rather than
+dropping, and for commit attachment.
 
 ## Limitations
 
@@ -488,11 +512,11 @@ are reported, never asserted or tuned against.
   new documents accumulate (or with `--rebuild`).
 - History follows file renames that `git -M` detects. A *symbol* rename starts a new lineage.
 - Merge commits are skipped (`--no-merges`); their changes are attributed through the merged commits.
-- **Retrieval known issue (held-out):** commit capsules can crowd code symbols out of the top 5, which lowers
-  Recall@5 and regression-query quality (see the benchmark section). The planned fix is kind-aware diversification,
-  evaluated on a fresh held-out set.
+- **Graveyard false alarms (held-out):** 17% on v2. Failures targeting any *file* in the top-3 results get +0.30
+  structural credit, which is too coarse now that the slot budget puts more code files in the top 3. The planned fix is
+  symbol-level anchoring, to be evaluated on a fresh held-out set.
 - Some graveyard matches sit close to the 0.40 threshold. For example, a paraphrased "billed twice" symptom scores
-  ~0.41, so re-fitting the embedder (`--rebuild`) can flip whether that warning appears. Warnings anchored to the same
+  0.396–0.414 depending on the corpus, so re-fitting the embedder (`--rebuild`) can flip whether that warning appears. Warnings anchored to the same
   file or symbol (preflight) are robust; purely textual ones are not.
 - Verified locally on macOS with Python 3.11 and 3.14. The CI matrix (Linux + macOS, 3.11–3.13) is configured but has
   not yet run on GitHub. Windows path handling is untested.
