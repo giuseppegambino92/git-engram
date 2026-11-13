@@ -10,7 +10,7 @@ served over the **Model Context Protocol** in ~2 ms. No LangChain, no LlamaIndex
 ![python](https://img.shields.io/badge/python-3.11%2B-3776AB)
 ![license](https://img.shields.io/badge/license-MIT-green)
 ![MCP](https://img.shields.io/badge/MCP-stdio%20server-7c3aed)
-![tests](https://img.shields.io/badge/tests-137%20passing-brightgreen)
+![tests](https://img.shields.io/badge/tests-143%20passing-brightgreen)
 ![frameworks](https://img.shields.io/badge/black--box%20frameworks-0-black)
 ![latency](https://img.shields.io/badge/preflight%20P95-1.8%20ms-orange)
 
@@ -81,8 +81,8 @@ The agent now knows the rule, why it exists, the exact patch that already failed
 ## Benchmark
 
 `git-engram benchmark` builds a reproducible synthetic monorepo (Python API, TypeScript web + mobile, Go worker,
-YAML/SQL/HTML/nginx) with 58 dated commits. It contains real-looking bugfixes, a perf "optimisation" that was
-reverted, hidden cross-language couplings, a poisoned vendored file, and 13 failed agent attempts in the Graveyard.
+YAML/SQL/HTML/nginx) with 65 dated commits. It contains real-looking bugfixes, a perf "optimisation" that was
+reverted, hidden cross-language couplings, a poisoned vendored file, and 15 failed agent attempts in the Graveyard.
 
 Every configuration sees **the same corpus, the same embedder and the same FTS5 index**. Baselines get the failure
 records as ordinary documents. For their ranking metrics, failures are filtered out (the most generous treatment);
@@ -90,68 +90,72 @@ their warning hit-rate counts a relevant failure anywhere in the unfiltered top-
 
 ### Evaluation protocol
 
-The queries come in five splits ([`dataset.py`](src/git_engram/evals/dataset.py)). Every held-out split was committed
-before the change it evaluates, which `git log` lets you check:
+The queries come in six splits ([`dataset.py`](src/git_engram/evals/dataset.py)). Every held-out split was committed
+before the change it evaluates; `git merge-base --is-ancestor` verifies each pair:
 
 | split | queries | status | committed in |
 |---|---:|---|---|
-| dev / calibration | 40 | every weight, threshold and design choice was made looking at these (behavioral "why" added in `d30f316`) | `54dc0c0` |
+| dev / calibration | 48 | every weight, threshold and design choice was made looking at these (behavioral `d30f316`, NL bug reports `645eecf`) | `54dc0c0` |
 | held-out v1 | 24 | retired: used to diagnose commit crowding | `d049d5e`, before the router `1a7d202` |
 | held-out v2 | 24 | retired: used to diagnose false alarms | `f32fee5`, before the slot budget `06e7d44` |
 | held-out v3 | 24 | retired: used to diagnose the causal regression and sibling false alarms | `fa34600`, before symbol anchoring `45bf5c2` |
-| held-out **v4** | 30 | **headline**: rate-limit / webhook fixture extension, 6 behavioral queries, sibling probes | `89d249f`, before code-first routing and gating `9e4e3e3` |
+| held-out v4 | 30 | retired: used to diagnose warning recall and regression routing | `89d249f`, before code-first routing and gating `9e4e3e3` |
+| held-out **v5** | 30 | **headline**: promotions / CSV-export extension, natural-language bug reports, sibling probes | `d39d10a`, before the top-commit trigger and symptom routing `a287a04` |
 
-One protocol slip happened this round and is disclosed here. While writing a unit test I used the text of one v4
-query (`v4-why-06`) verbatim, so retrieval ran on it once before the final evaluation. All settings were already
-frozen at that point and nothing changed afterwards; the text was replaced, and a guard test
-(`test_no_test_file_contains_held_out_query_text`) now makes this fail CI.
+During the v4 round, one v4 query ran once in a unit test before the final evaluation (settings were already frozen).
+A guard test (`test_no_test_file_contains_held_out_query_text`) now covers every held-out split, and no held-out
+query was executed before its evaluation this round.
 
-### Held-out v4: 30 unseen queries (headline)
+### Held-out v5: 30 unseen queries (headline)
 
 | Configuration | Recall@3 | Recall@5 | MRR | nDCG@5 | Neg. Warning Hit | False Alarms | Co-Change Disc. | Index RAM (KB) | P50 (ms) | P95 (ms) |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| Dense RAG (float32 cosine) | 0.661 | 0.744 | 0.848 | 0.722 | **100%** | 18% | 33% | 325.5 | 0.18 | 0.29 |
-| BM25 only (SQLite FTS5) | 0.661 | 0.789 | 0.844 | 0.757 | 50% | **14%** | 17% | **65.0** | 0.25 | 0.39 |
-| Hybrid (BM25 + float32, RRF) | 0.678 | 0.744 | **0.892** | 0.747 | 88% | **14%** | 17% | 390.5 | 0.31 | 0.45 |
-| **git-engram** (full) | **0.694** | **0.856** | 0.864 | **0.817** | 62% | **14%** | **67%** | 133.3 | 1.47 | 1.99 |
+| Dense RAG (float32 cosine) | 0.778 | 0.817 | 0.850 | 0.771 | **100%** | 12% | 67% | 360.0 | 0.16 | 0.23 |
+| BM25 only (SQLite FTS5) | 0.756 | 0.817 | 0.874 | 0.803 | 83% | **0%** | 67% | **74.0** | 0.30 | 0.40 |
+| Hybrid (BM25 + float32, RRF) | 0.761 | 0.833 | 0.899 | 0.826 | 83% | 4% | 67% | 434.0 | 0.38 | 0.56 |
+| **git-engram** (full) | **0.800** | **0.872** | **0.967** | **0.902** | **100%** | 8% | **83%** | 149.4 | 1.60 | 2.18 |
 
-| nDCG@5, held-out v4 | causal "why" (history) | behavioral "why" (code) | regression | coupled-file | error-code |
+| nDCG@5, held-out v5 | causal "why" | behavioral "why" | NL bug reports | coupled-file | error-code |
 |---|---:|---:|---:|---:|---:|
-| Dense RAG (float32) | 0.824 | **0.991** | 0.610 | 0.481 | 0.703 |
-| BM25 only | **0.888** | 0.889 | **0.764** | 0.440 | 0.806 |
-| Hybrid (BM25 + float32) | 0.870 | 0.907 | 0.713 | 0.442 | 0.803 |
-| **git-engram** | **0.888** | 0.989 | 0.696 | **0.652** | **0.859** |
+| Dense RAG (float32) | 0.754 | **1.000** | 0.764 | 0.564 | 0.774 |
+| BM25 only | 0.902 | 0.929 | 0.828 | 0.468 | **0.889** |
+| Hybrid (BM25 + float32) | 0.922 | 0.994 | 0.802 | 0.526 | 0.886 |
+| **git-engram** | **0.942** | 0.991 | **0.878** | **0.824** | 0.874 |
 
-**Retired splits, current engine** (nDCG@5 vs BM25 · false alarms · warning hit rate): v3 **0.840** vs 0.763 · 18% ·
-71%; v2 **0.857** vs 0.784 · 6% · 83%; v1 **0.823** vs 0.739 · 5% · 80%. **Dev** (optimistic): **0.890** vs 0.792,
-behavioral 1.000, false alarms 0%. Full tables: [`benchmarks/RESULTS.md`](benchmarks/RESULTS.md).
+**Retired splits, current engine** (nDCG@5 vs BM25 · warning hit rate · false alarms): v4 **0.832** vs 0.753 · 100% ·
+14%; v3 **0.842** vs 0.751 · 86% · 24%; v2 **0.872** vs 0.784 · 100% · 6%; v1 **0.830** vs 0.757 · 80% · 5%.
+**Dev** (optimistic): **0.818** vs 0.735, warning hit rate 90%, false alarms 7%. Full tables:
+[`benchmarks/RESULTS.md`](benchmarks/RESULTS.md).
 
-**Ablations:** each row changes one component, measured on dev and held-out v4.
+**Ablations:** each row changes one component, measured on dev and held-out v5.
 
-| Variant | nDCG@5 dev | nDCG@5 **v4** | Recall@5 v4 | MRR v4 | Co-Change v4 | Neg. Hit v4 | False Alarms v4 |
+| Variant | nDCG@5 dev | nDCG@5 **v5** | Recall@5 v5 | MRR v5 | Co-Change v5 | Neg. Hit v5 | False Alarms v5 |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| git-engram (full) | 0.890 | 0.817 | 0.856 | 0.864 | 67% | 62% | 14% |
-| − code-first behavioral route | 0.893 | 0.756 | 0.839 | 0.787 | 67% | 62% | 14% |
-| − named-symbol pinning | 0.882 | 0.798 | 0.856 | 0.839 | 67% | 62% | 14% |
-| − commit-relevance gate (any top-3 commit) | 0.890 | 0.817 | 0.856 | 0.864 | 67% | 100% | 27% |
-| file-level graveyard anchoring (legacy) | 0.890 | 0.817 | 0.856 | 0.864 | 67% | 100% | 36% |
-| − commit slot budget | 0.867 | 0.772 | 0.822 | 0.822 | 50% | 62% | 14% |
-| − query-adaptive router | 0.838 | 0.697 | 0.806 | 0.732 | 50% | 50% | 14% |
-| − exact-identifier rerank profile | 0.890 | 0.805 | 0.839 | 0.864 | 67% | 62% | 14% |
-| + MMR file diversity (opt-in) | 0.897 | 0.781 | 0.778 | 0.864 | 67% | 62% | 14% |
-| − co-change graph path | 0.865 | 0.854 | 0.856 | 0.944 | 50% | 75% | 14% |
-| − interaction reranker | 0.654 | 0.716 | 0.828 | 0.744 | 50% | 62% | 9% |
-| − time decay (plain RRF) | 0.891 | 0.800 | 0.822 | 0.864 | 50% | 62% | 14% |
-| float32 exact instead of 1-bit + int8 | 0.890 | 0.817 | 0.856 | 0.864 | 67% | 62% | 14% |
+| git-engram (full) | 0.818 | 0.902 | 0.872 | 0.967 | 83% | 100% | 8% |
+| − direct top-commit warning trigger | 0.818 | 0.902 | 0.872 | 0.967 | 83% | 67% | 8% |
+| − broad symptom routing (old rules) | 0.812 | 0.893 | 0.872 | 0.950 | 83% | 83% | 8% |
+| symptom co-change expansion on (graph 0.3) | 0.816 | 0.902 | 0.872 | 0.967 | 83% | 100% | 8% |
+| − commit-relevance gate (any top-3 commit) | 0.818 | 0.902 | 0.872 | 0.967 | 83% | 100% | 42% |
+| file-level graveyard anchoring (legacy) | 0.818 | 0.902 | 0.872 | 0.967 | 83% | 100% | 50% |
+| − code-first behavioral route | 0.820 | 0.855 | 0.872 | 0.900 | 83% | 100% | 4% |
+| − named-symbol pinning | 0.812 | 0.902 | 0.872 | 0.967 | 83% | 100% | 8% |
+| − commit slot budget | 0.802 | 0.900 | 0.872 | 0.967 | 83% | 100% | 8% |
+| − query-adaptive router | 0.765 | 0.826 | 0.889 | 0.867 | 83% | 83% | 8% |
+| − exact-identifier rerank profile | 0.818 | 0.896 | 0.872 | 0.967 | 83% | 100% | 12% |
+| + MMR file diversity (opt-in) | 0.818 | 0.886 | 0.844 | 0.967 | 83% | 100% | 8% |
+| − co-change graph path | 0.794 | 0.894 | 0.861 | 0.961 | 67% | 100% | 8% |
+| − interaction reranker | 0.606 | 0.855 | 0.894 | 0.906 | 83% | 83% | 4% |
+| − time decay (plain RRF) | 0.821 | 0.889 | 0.861 | 0.967 | 67% | 100% | 4% |
+| float32 exact instead of 1-bit + int8 | 0.818 | 0.902 | 0.872 | 0.967 | 83% | 100% | 8% |
 
-**`engram_preflight_check` latency:** P50 **1.34 ms**, P95 **1.84 ms** (warm MCP server, 7 targets × 30 runs).
+**`engram_preflight_check` latency:** P50 **1.11 ms**, P95 **1.83 ms** (warm MCP server, 7 targets × 30 runs).
 
 **Two-stage quantized search at scale** (synthetic Dirichlet topic mixtures of the corpus embeddings, 400 candidates):
 
 | Vectors | Recall@10 vs float32-384d | Recall@10 vs float32-256d | Two-stage P50 | float32 P50 | Two-stage RAM | float32 RAM |
 |---:|---:|---:|---:|---:|---:|---:|
-| 10,000 | 0.870 | 0.985 | 0.20 ms | 0.25 ms | 2.8 MB | 14.6 MB |
-| 100,000 | 0.726 | 0.976 | **0.65 ms** | 2.52 ms | **27.8 MB** | 146.5 MB |
+| 10,000 | 0.874 | 0.990 | 0.18 ms | 0.23 ms | 2.8 MB | 14.6 MB |
+| 100,000 | 0.733 | 0.970 | **0.62 ms** | 2.44 ms | **27.8 MB** | 146.5 MB |
 
 **Context firewall:** 12/12 injection payloads detected and neutralised; 0/12 benign snippets modified.
 
@@ -161,24 +165,22 @@ load; quality metrics are deterministic. Raw numbers: [`benchmarks/RESULTS.md`](
 
 ### Reading the numbers honestly
 
-- **Both v3 weaknesses are fixed on unseen data.** Behavioral "why" questions score 0.989 vs 0.889 for BM25, and
-  removing the code-first route costs −0.061 nDCG@5 on v4, the largest validated gain this round. Causal history
-  questions recovered from 0.650 to 0.888, now tied with BM25. False alarms fell from 27% (no gate) and 36%
-  (file-level anchoring) to **14%, level with BM25 and hybrid**.
-- **The price: warning recall.** The commit-relevance gate cut v4's warning hit rate from 100% to **62%**, and it
-  costs 15–20 points on every retired split. Dev predicted only 80% → 73%. The diagnosis is precise. In the misses,
-  the *correct* fix commit is retrieved at rank 1 (INC-2904, SEC-171), but the gate also demands that the failure's
-  function be among the top-5 code hits. The next step is to let a rank-1 or very strong commit credit its own
-  functions directly, and require code overlap only for weaker commits. Two of the three remaining false alarms are
-  sibling functions retrieved *directly* in the top 3, which no commit gate can address.
-- **Still leading overall.** git-engram has the best nDCG@5 (+0.06), Recall@5, Recall@3, error-code (+0.05) and
-  coupled-file (+0.21) quality, and the best co-change discovery.
-- **Not leading everywhere.** On v4 regression queries BM25 is ahead again (0.764 vs 0.696). 4 of 6 are routed
-  `general` rather than `symptom`, and the co-change graph pulls in coupled files; removing the graph *raises* v4
-  nDCG@5 to 0.854 and MRR to 0.944, while it helped on dev and v1–v3. Hybrid has the best MRR.
+- **Both v4 targets were met on unseen data.** Warning recall is **100%** on v5 (67% without the direct top-commit
+  trigger) and 100% on retired v4 (was 62%). Natural-language bug reports score **0.878 vs 0.828** for BM25; on
+  retired v4 it is 0.824 vs 0.764, which was the gap the previous round left open. Broad symptom routing sent all 6
+  v5 bug reports to the `symptom` route.
+- **False alarms: 8% on v5**, under the ~14% target and below dense (12%), but above BM25 (0%) and hybrid (4%). The
+  trigger has a cost on the split built to probe sibling false alarms: retired v3 rose from 18% to **24%** (BM25 12%).
+  A sibling's *fix* commit that ranks #1 now credits its functions directly. The conjunctive gate is still doing
+  most of the work: without it v5 false alarms are 42%.
+- **What did not matter.** Damping co-change expansion on symptom routes is neutral on both dev and v5; the
+  regression gain came from routing plus allowing two commits in the top 5. Pinning was neutral on v5.
+- **Where git-engram does not lead.** Exact-identifier queries (0.874 vs BM25 0.889), behavioral queries (dense hits
+  1.000 vs 0.991), and false alarms vs BM25. v5 is also easier than earlier splits for every configuration: all
+  baselines score higher on it than on dev or v4, so its absolute numbers flatter everyone, not just git-engram.
 - **Quantization is free here.** On every split the two-stage 1-bit → int8 search gives *identical* metrics to exact
-  float32. At 100k vectors it keeps 98% of the same-dimension float32 top-10 in 5.3× less RAM and runs ~4× faster.
-- **Still synthetic.** One generated repository and 142 queries. Treat the numbers as evidence for the mechanisms,
+  float32. At 100k vectors it keeps 97% of the same-dimension float32 top-10 in 5.3× less RAM and runs ~4× faster.
+- **Still synthetic.** One generated repository and 180 queries. Treat the numbers as evidence for the mechanisms,
   not as a universal leaderboard.
 
 ---
@@ -307,7 +309,7 @@ and the reranker's intent ([`router.py`](src/git_engram/retrieval/router.py)). P
 | `causal` | why / reason / purpose / rationale / explain (incl. was/did/changed/reverted) | 1.0 | 1.0 | 0.5 | commits, failures |
 | `change` | imperative add / change / rename / tune / raise ... | 1.0 | 1.0 | **1.3** | code |
 | `exact` | commit hash, `ERR_X` / `E4012` / `INC-123`, exception name, quoted string, file path | **2.0** | 0.4 | 0.2 | verbatim token hits |
-| `symptom` | natural-language bug report ("billed twice", "logged out", "under load") | 1.2 | 1.0 | **0.3** | commits that fixed it |
+| `symptom` | natural-language bug report: "billed twice", silent drops, stale state, "kept / stopped / ended up", past-tense narratives | 1.2 | 1.0 | **0** (expansion off) | commits that fixed it (2 slots) |
 | `general` | anything else | 1.0 | 1.0 | 1.0 | auto |
 
 Routing costs microseconds and never looks at the corpus. The weights were set once, from the reasoning above, and
@@ -320,7 +322,7 @@ Commit capsules are often the best lexical *and* semantic match for a question, 
 of the top 5 with them and push the code the agent must edit to rank 6+. The final top-k assembly is therefore
 **stratified**: at most $c_{\text{class}}$ commit capsules may occupy the first 5 slots, where
 
-$$c_{\text{causal}} = 3,\quad c_{\text{behavioral}} = c_{\text{exact}} = c_{\text{general}} = 2,\quad c_{\text{symptom}} = 1,\quad c_{\text{change}} = 0 .$$
+$$c_{\text{causal}} = 3,\quad c_{\text{behavioral}} = c_{\text{symptom}} = c_{\text{exact}} = c_{\text{general}} = 2,\quad c_{\text{change}} = 0 .$$
 
 Excess commits are **deferred** to rank 6+, never dropped. To keep the causal context those slots used to carry, every
 code hit gets **attached commits**: the commits that modified that exact symbol, preferring ones that were retrieval
@@ -346,11 +348,14 @@ $$\underbrace{0.75\,[\text{same symbol}] \;\big|\; 0.5\,[\text{same file}] \;\bi
 
 The threshold means a failure needs either a strong textual match alone, or a moderate one *anchored to the code
 being retrieved*. Anchoring is **symbol-level**: a failure whose diff touched a named function only earns the 0.3 when that same
-function is retrieved in the top 3. A retrieved commit can also earn it, but only through the **commit-relevance
-gate**: the commit's rerank score must be at least 0.9 × the best in the top 3, it must not be a bulk commit
-(more than 8 symbols), and the failure's function must *also* be among the top-5 code hits. Failures whose diff sits
-outside any named symbol fall back to file-level matching. In preflight, a *different* function of the target file
-weighs only 0.25. Matches render in an `<anti_context_do_not_repeat>` block with the failed diff and the reason.
+function is retrieved in the top 3. Retrieved commits add evidence in two ways. A **load-bearing** commit
+(bugfix / security / revert) that ranks **#1**, or scores above 0.65, is a **direct trigger**: every function it
+modified earns 0.40, enough to warn on its own, because when the top answer *is* the fix, an attempt to re-break
+that function is relevant. Any other commit goes through the **commit-relevance gate**: at least 0.9 × the best
+score in the top 3, not a bulk commit (more than 8 symbols), and the failure's function must *also* be among the
+top-5 code hits. Failures outside any named symbol fall back to file-level matching. In preflight, a *different*
+function of the target file weighs only 0.25. Matches render in an `<anti_context_do_not_repeat>` block with the
+failed diff and the reason.
 
 ### 6. Context firewall (CamoLeak / PoisonedRAG defence)
 
@@ -512,7 +517,7 @@ Both run on raw ONNX Runtime + `tokenizers`, with no torch.
 
 ```bash
 uv venv && uv pip install -e ".[dev]"
-pytest -q                                    # 137 tests, fully offline (verified on Python 3.11 and 3.14)
+pytest -q                                    # 143 tests, fully offline (verified on Python 3.11 and 3.14)
 GIT_ENGRAM_NO_TREE_SITTER=1 pytest -q        # what CI runners without cached grammars execute
 ruff check src tests
 git-engram benchmark
@@ -536,11 +541,10 @@ have dedicated tests, and a guard test fails if any test file executes held-out 
   new documents accumulate (or with `--rebuild`).
 - History follows file renames that `git -M` detects. A *symbol* rename starts a new lineage.
 - Merge commits are skipped (`--no-merges`); their changes are attributed through the merged commits.
-- **Graveyard recall vs. precision (held-out v4):** false alarms are now at the BM25 level (14%), but the
-  commit-relevance gate dropped the warning hit rate to 62%. It blocks warnings even when the correct fix commit
-  is the rank-1 result. Planned: let rank-1 or very strong commits credit their own functions directly.
-- **Regression queries (held-out v4):** BM25 leads again (0.764 vs 0.696). Most v4 bug reports are routed
-  `general` instead of `symptom`, and the co-change graph adds coupled-file noise to them.
+- **Graveyard false alarms vs. BM25:** 8% on v5 and 24% on retired v3, where BM25 has 0% and 12%. A sibling
+  function's *fix* commit that ranks #1 now triggers its functions directly. That trade bought warning recall
+  (100% on v5 and v4).
+- **Exact identifiers:** BM25 still leads slightly (0.889 vs 0.874 on v5).
 - Some graveyard matches sit close to the 0.40 threshold, so re-fitting the embedder (`--rebuild`) can flip a
   purely textual warning. Warnings anchored to the same symbol (preflight) are robust.
 - Verified locally on macOS with Python 3.11 and 3.14. The CI matrix (Linux + macOS, 3.11–3.13) is configured but
