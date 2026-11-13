@@ -34,7 +34,8 @@ dependencies = [
 [project.optional-dependencies]
 treesitter = ["tree-sitter>=0.23", "tree-sitter-language-pack>=0.7"]
 onnx = ["onnxruntime>=1.18", "tokenizers>=0.19"]
-dev = ["pytest>=8", "tree-sitter>=0.23", "tree-sitter-language-pack>=0.7"]
+tui = ["textual>=0.80"]
+dev = ["pytest>=8", "tree-sitter>=0.23", "tree-sitter-language-pack>=0.7", "textual>=0.80", "ruff>=0.6"]
 
 [project.scripts]
 git-engram = "git_engram.cli.main:main"

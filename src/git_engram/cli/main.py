@@ -187,6 +187,9 @@ def cmd_query(args: argparse.Namespace) -> int:
         )
     for f in resp.security:
         console.print(f"[magenta]firewall[/magenta] [{f.severity}] {f.rule}: {f.detail[:120]}")
+    if resp.query_class:
+        w = "  ".join(f"{k}={v:.1f}" for k, v in resp.fusion_weights.items())
+        console.print(f"[cyan]query class:[/cyan] {resp.query_class}   [cyan]TD-RRF weights:[/cyan] {w}")
     t = resp.timings_ms
     console.print("[dim]latency: " + "  ".join(f"{k}={v:.2f}ms" for k, v in t.items()) + "[/dim]")
     return 0
@@ -300,6 +303,9 @@ def cmd_benchmark(args: argparse.Namespace) -> int:
 
 # --------------------------------------------------------------------------------- inspect
 def cmd_inspect(args: argparse.Namespace) -> int:
+    if getattr(args, "tui", False):
+        args.query = None
+        return cmd_tui(args)
     engine = _engine(args)
     _ensure_index(engine)
     s = engine.stats()
@@ -362,6 +368,18 @@ def cmd_inspect(args: argparse.Namespace) -> int:
         console.print(
             f"[yellow]{len(invs)} invariant(s):[/yellow] " + ", ".join(f"{i['rule_id']}[{i['severity']}]" for i in invs)
         )
+    return 0
+
+
+def cmd_tui(args: argparse.Namespace) -> int:
+    try:
+        from ..tui.app import run_tui
+    except ImportError:
+        err.print("[red]The dashboard needs Textual:[/red] pip install 'git-engram[tui]'")
+        return 2
+    engine = _engine(args)
+    _ensure_index(engine)
+    run_tui(engine, args.query or "")
     return 0
 
 
@@ -430,7 +448,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("inspect", help="coupling hotspots, load-bearing files, graveyard and memory footprint")
     p.add_argument("--limit", type=int, default=10)
+    p.add_argument("--tui", action="store_true", help="open the interactive dashboard instead")
     p.set_defaults(func=cmd_inspect)
+
+    p = sub.add_parser("tui", help="interactive dashboard: live search, co-change graph, graveyard diffs")
+    p.add_argument("query", nargs="?", help="optional initial search query")
+    p.set_defaults(func=cmd_tui)
 
     p = sub.add_parser("mcp", help="run the MCP server over stdio")
     p.set_defaults(func=cmd_mcp)
