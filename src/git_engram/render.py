@@ -150,7 +150,11 @@ def render_preflight(r: PreflightReport) -> str:
 
 def render_search(resp: SearchResponse) -> str:
     total = resp.timings_ms.get("end_to_end", resp.timings_ms.get("total", 0.0))
-    lines = [f'<engram_search query="{_attr(resp.query)}" latency_ms="{total:.2f}">', f"<notice>{NOTICE}</notice>"]
+    cls = f' query_class="{resp.query_class}"' if resp.query_class else ""
+    lines = [
+        f'<engram_search query="{_attr(resp.query)}"{cls} latency_ms="{total:.2f}">',
+        f"<notice>{NOTICE}</notice>",
+    ]
     lines += render_invariants(resp.invariants)
     lines += render_warnings(resp.warnings)
     lines.append("<results>")

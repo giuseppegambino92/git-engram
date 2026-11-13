@@ -116,3 +116,5 @@ class SearchResponse(BaseModel):
     invariants: list[InvariantHit] = Field(default_factory=list)
     security: list[SecurityFinding] = Field(default_factory=list)
     timings_ms: dict[str, float] = Field(default_factory=dict)
+    query_class: str | None = None
+    fusion_weights: dict[str, float] = Field(default_factory=dict)

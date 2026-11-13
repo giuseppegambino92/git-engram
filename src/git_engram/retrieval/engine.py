@@ -18,6 +18,7 @@ from .fusion import td_rrf
 from .graph import CoChangeGraph
 from .lexical import bm25_search
 from .reranker import Candidate, Reranker
+from .router import QueryProfile, classify
 
 
 @dataclass(frozen=True)
@@ -30,6 +31,7 @@ class RetrievalMode:
     rerank: bool = True
     negative: bool = True
     diversify: bool = True
+    route: bool = True
     exclude_kinds: frozenset[str] = frozenset({"failure"})
 
 
@@ -42,6 +44,7 @@ DENSE_F32 = RetrievalMode(
     time_decay=False,
     rerank=False,
     negative=False,
+    route=False,
     exclude_kinds=frozenset(),
 )
 BM25_ONLY = RetrievalMode(
@@ -52,6 +55,7 @@ BM25_ONLY = RetrievalMode(
     time_decay=False,
     rerank=False,
     negative=False,
+    route=False,
     exclude_kinds=frozenset(),
 )
 HYBRID = RetrievalMode(
@@ -62,6 +66,7 @@ HYBRID = RetrievalMode(
     time_decay=False,
     rerank=False,
     negative=False,
+    route=False,
     exclude_kinds=frozenset(),
 )
 MODES = {m.name: m for m in (FULL, DENSE_F32, BM25_ONLY, HYBRID)}
@@ -83,6 +88,7 @@ class RetrievalResult:
     query_vec: np.ndarray | None
     timings_ms: dict[str, float] = field(default_factory=dict)
     seed_files: list[str] = field(default_factory=list)
+    profile: QueryProfile | None = None
 
 
 class HybridRetriever:
@@ -210,6 +216,9 @@ class HybridRetriever:
         if mode.vector:
             rankings["vec"] = [h.doc_id for h in vec_hits]
         weights = {"bm25": cfg.w_bm25, "vec": cfg.w_vec, "graph": cfg.w_graph}
+        profile = classify(query) if (mode.route and cfg.adaptive_routing) else None
+        if profile is not None:
+            weights = {m: weights[m] * profile.weights[m] for m in weights}
 
         graph_info: dict[int, tuple[float, str]] = {}
         seed_files: list[str] = []
@@ -266,7 +275,7 @@ class HybridRetriever:
                 )
                 for d, score, _ in top
             ]
-            scores = self.reranker.rerank(query, cands)
+            scores = self.reranker.rerank(query, cands, profile.intent if profile else "auto")
             rerank_scores = {c.doc_id: s for c, s in zip(cands, scores, strict=True)}
             head = sorted(ids, key=lambda d: (-rerank_scores[d], d))
             if mode.diversify:
@@ -309,7 +318,7 @@ class HybridRetriever:
                 )
             )
         timings["total"] = (time.perf_counter() - t0) * 1000
-        return RetrievalResult(hits, q, timings, seed_files)
+        return RetrievalResult(hits, q, timings, seed_files, profile)
 
     def _diversify(self, ranked: list[int], scores: dict[int, float]) -> list[int]:
         """Greedy MMR over file identity: each already-selected code doc from the same file costs

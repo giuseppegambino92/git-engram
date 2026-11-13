@@ -385,7 +385,10 @@ class Engram:
                         invariants.append(inv)
             result.timings_ms["negative_rag"] = (time.perf_counter() - t1) * 1000
         result.timings_ms["end_to_end"] = (time.perf_counter() - t0) * 1000
+        profile = result.profile
         return SearchResponse(
+            query_class=profile.klass if profile else None,
+            fusion_weights=profile.weights if profile else {},
             query=query,
             hits=result.hits,
             coupling=coupling[:6],

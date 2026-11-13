@@ -74,7 +74,7 @@ def idf_coverage(query: str, text: str, idf: Callable[[str], float]) -> float:
 class Reranker(Protocol):
     name: str
 
-    def rerank(self, query: str, candidates: Sequence[Candidate]) -> list[float]: ...
+    def rerank(self, query: str, candidates: Sequence[Candidate], intent: str = "auto") -> list[float]: ...
 
 
 class InteractionReranker:
@@ -114,7 +114,7 @@ class InteractionReranker:
             self._cache.popitem(last=False)
         return value
 
-    def features(self, query: str, c: Candidate, max_prior: float) -> dict[str, float]:
+    def features(self, query: str, c: Candidate, max_prior: float, intent_hint: str = "auto") -> dict[str, float]:
         q_terms: list[str] = []
         for t in analyze(query):
             if t in STOPWORDS or len(t) < 2:
@@ -132,8 +132,11 @@ class InteractionReranker:
         proximity = sum(1 for p in pairs if p in bigrams) / len(pairs) if pairs else 0.0
         rare = [r.lower() for r in raw_tokens(query) if is_rare_token(r)]
         exact = sum(1 for r in rare if r in lowered) / len(rare) if rare else 0.0
-        causal = bool(_CAUSAL.search(query))
-        change = bool(_CHANGE.search(query))
+        if intent_hint == "auto":
+            causal = bool(_CAUSAL.search(query))
+            change = bool(_CHANGE.search(query))
+        else:  # set by the query router
+            causal, change = intent_hint == "causal", intent_hint == "change"
         if causal and not change:
             intent = 1.0 if c.kind in {"commit", "failure"} else 0.0
         elif change and not causal:
@@ -151,11 +154,11 @@ class InteractionReranker:
             "graph": c.graph,
         }
 
-    def rerank(self, query: str, candidates: Sequence[Candidate]) -> list[float]:
+    def rerank(self, query: str, candidates: Sequence[Candidate], intent: str = "auto") -> list[float]:
         max_prior = max((c.prior for c in candidates), default=1.0)
         out = []
         for c in candidates:
-            f = self.features(query, c, max_prior)
+            f = self.features(query, c, max_prior, intent)
             out.append(sum(self.WEIGHTS[k] * v for k, v in f.items()))
         return out
 
@@ -169,7 +172,7 @@ class OnnxCrossEncoderReranker:
         self.model = OnnxCrossEncoder(model_dir)
         self.prior_weight = prior_weight
 
-    def rerank(self, query: str, candidates: Sequence[Candidate]) -> list[float]:
+    def rerank(self, query: str, candidates: Sequence[Candidate], intent: str = "auto") -> list[float]:
         passages = [f"{c.title}\n{c.path}\n{c.body[:1500]}" for c in candidates]
         logits = self.model.score(query, passages)
         max_prior = max((c.prior for c in candidates), default=1.0) or 1.0

@@ -27,6 +27,7 @@ class RetrievalConfig(BaseModel):
     w_bm25: float = 1.0
     w_vec: float = 1.0
     w_graph: float = 1.0
+    adaptive_routing: bool = True
     static_link_discount: float = 0.6
     recency_alpha: float = 0.25
     recency_half_life_days: float = 120.0
