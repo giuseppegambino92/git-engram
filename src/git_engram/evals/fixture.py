@@ -1,7 +1,7 @@
 """Deterministic synthetic monorepo used by the evaluation suite and the integration tests.
 
 "shopfront" is a small e-commerce monorepo (Python backend, TypeScript web + mobile, Go worker, YAML/SQL/
-HTML assets) with ~40 dated commits that reproduce the failure modes git-engram targets:
+HTML assets) with ~47 dated commits that reproduce the failure modes git-engram targets:
 
 * load-bearing bugfixes that look like redundant code (clock-skew grace, idempotency key, cache lock ...),
 * a performance "optimisation" that caused a race and was reverted,
@@ -659,6 +659,85 @@ jobs:
 """
 
 
+SHIPPING_RATES_PY = """
+\"\"\"Shipping rate tables (prices in integer cents).\"\"\"
+
+ZONE_BASE_CENTS = {"domestic": 499, "eu": 1299, "intl": 2499}
+PER_100G_CENTS = {"domestic": 35, "eu": 80, "intl": 150}
+
+
+def shipping_cents_for(weight_grams: int, zone: str) -> int:
+    \"\"\"Shipping price for a parcel of ``weight_grams`` to ``zone``.\"\"\"
+    brackets = weight_grams // 100
+    return ZONE_BASE_CENTS[zone] + brackets * PER_100G_CENTS[zone]
+"""
+
+SHIPPING_ESTIMATE_TSX = """
+import React, { useEffect, useState } from "react";
+
+const ZONES = ["domestic", "eu", "intl"];
+
+export function ShippingEstimate({ weightGrams, zone }: { weightGrams: number; zone: string }) {
+  const [cents, setCents] = useState<number | null>(null);
+  useEffect(() => {
+    fetch(`/api/shipping/estimate?weight=${weightGrams}&zone=${zone}`)
+      .then((r) => r.json())
+      .then((d) => setCents(d.cents));
+  }, [weightGrams, zone]);
+  if (cents === null) return <span>estimating...</span>;
+  return (
+    <label>
+      <select defaultValue={zone}>{ZONES.map((z) => <option key={z}>{z}</option>)}</select>
+      {(cents / 100).toFixed(2)}
+    </label>
+  );
+}
+"""
+
+PASSWORD_PY = """
+\"\"\"Password hashing with PBKDF2-HMAC-SHA256.\"\"\"
+import hashlib
+import hmac
+import os
+
+PBKDF2_ITERATIONS = 100_000
+
+
+def hash_password(password: str, salt: bytes | None = None) -> str:
+    \"\"\"Return ``salt$digest`` (hex) for storage.\"\"\"
+    salt = os.urandom(16) if salt is None else salt
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, PBKDF2_ITERATIONS)
+    return f"{salt.hex()}${digest.hex()}"
+
+
+def verify_password(password: str, stored: str) -> bool:
+    \"\"\"Check ``password`` against a stored ``salt$digest``.\"\"\"
+    salt_hex, digest_hex = stored.split("$", 1)
+    candidate = hash_password(password, bytes.fromhex(salt_hex)).split("$", 1)[1]
+    return candidate == digest_hex
+"""
+
+DLQ_GO = """
+package queue
+
+import "context"
+
+// DeadLetterTopic mirrors dead_letter_topic in worker.yaml.
+var DeadLetterTopic = "orders.dlq"
+
+// DeadLetter parks a message that exhausted its retry budget so it stops blocking the partition.
+func (c *Consumer) DeadLetter(ctx context.Context, msg *Message, attempts int) error {
+	if attempts < MaxAttempts {
+		return c.broker.Nack(ctx, msg.ID)
+	}
+	if err := c.broker.Publish(ctx, DeadLetterTopic, msg.Body); err != nil {
+		return err
+	}
+	return c.broker.Ack(ctx, msg.ID)
+}
+"""
+
+
 def build_shopfront(root: Path) -> FixtureInfo:
     b = RepoBuilder(root)
 
@@ -1221,6 +1300,105 @@ def leftpad(text: str, width: int, fill: str = " ") -> str:
     b.append("README.md", "\n## Development\n\nRun `make test` from the repository root.\n")
     b.commit("2025-12-03", "carol", "docs: development instructions")
 
+    # ---------------------------------------------------- v2 extension: shipping
+    b.write("backend/shipping/rates.py", SHIPPING_RATES_PY)
+    b.write("web/src/components/ShippingEstimate.tsx", SHIPPING_ESTIMATE_TSX)
+    b.commit("2025-12-10", "bob", "feat(shipping): weight-based shipping rates and checkout estimate widget")
+    b.replace(
+        "backend/shipping/rates.py",
+        "    brackets = weight_grams // 100\n",
+        "    brackets = -(-weight_grams // 100)  # carriers bill every started 100 g bracket (INC-2718)\n",
+    )
+    b.commit(
+        "2025-12-17",
+        "alice",
+        "fix(shipping): round parcel weight up to the next 100 g bracket (INC-2718)",
+        "A 150 g parcel was billed as 100 g while the carrier invoices every started bracket, so ~11k orders "
+        "were undercharged. Use ceiling division.",
+    )
+    b.replace("backend/shipping/rates.py", '"intl": 2499}', '"intl": 2499, "uk": 899}')
+    b.replace("backend/shipping/rates.py", '"intl": 150}', '"intl": 150, "uk": 60}')
+    b.replace(
+        "web/src/components/ShippingEstimate.tsx",
+        'const ZONES = ["domestic", "eu", "intl"];',
+        'const ZONES = ["domestic", "eu", "intl", "uk"];',
+    )
+    b.commit("2025-12-22", "bob", "feat(shipping): separate uk zone after the customs split")
+    b.replace(
+        "backend/shipping/rates.py",
+        '    """Shipping price for a parcel of ``weight_grams`` to ``zone``."""\n',
+        '    """Shipping price for a parcel of ``weight_grams`` to ``zone``."""\n    if weight_grams <= 0:\n'
+        '        raise ValueError(f"ERR_SHIPPING_WEIGHT: parcel weight must be positive, got {weight_grams}")\n',
+    )
+    b.replace(
+        "web/src/components/ShippingEstimate.tsx",
+        "  if (cents === null) return <span>estimating...</span>;",
+        "  if (cents === null) return <span>estimating...</span>;\n"
+        '  if (cents < 0) return <span role="alert">Enter a parcel weight (ERR_SHIPPING_WEIGHT)</span>;',
+    )
+    b.commit("2026-01-08", "carol", "fix(shipping): reject zero or negative parcel weights with ERR_SHIPPING_WEIGHT")
+
+    # ---------------------------------------------------- v2 extension: passwords
+    b.write("backend/auth/password.py", PASSWORD_PY)
+    b.commit("2026-01-14", "carol", "feat(auth): PBKDF2 password hashing helpers")
+    b.replace(
+        "backend/auth/password.py",
+        "    return candidate == digest_hex",
+        "    return hmac.compare_digest(candidate, digest_hex)",
+    )
+    b.commit(
+        "2026-01-21",
+        "carol",
+        "fix(security): constant-time password comparison (SEC-150)",
+        "String equality returns at the first differing byte, so response timing leaked how much of a "
+        "forged hash matched. hmac.compare_digest runs in constant time.",
+    )
+    b.replace(
+        "backend/auth/password.py",
+        "PBKDF2_ITERATIONS = 100_000",
+        "# OWASP 2023 guidance for PBKDF2-HMAC-SHA256 (SEC-152).\nPBKDF2_ITERATIONS = 600_000",
+    )
+    b.commit("2026-01-28", "alice", "fix(security): raise PBKDF2 iterations to 600k (SEC-152)")
+
+    # ------------------------------------------------- v2 extension: dead letters
+    b.replace(
+        "worker/pkg/queue/consumer.go",
+        "	Nack(ctx context.Context, id string) error\n}",
+        "	Nack(ctx context.Context, id string) error\n"
+        "	Publish(ctx context.Context, topic string, body []byte) error\n}",
+    )
+    b.write("worker/pkg/queue/dlq.go", DLQ_GO)
+    b.append("worker/config/worker.yaml", "dead_letter_topic: orders.dlq\n")
+    b.commit(
+        "2026-02-04",
+        "dan",
+        "fix(worker): park poison messages in a dead-letter queue (INC-2741)",
+        "A malformed order payload failed on every delivery and was redelivered forever, blocking its "
+        "partition for six hours. After MaxAttempts it is now published to dead_letter_topic and acked.",
+    )
+
+    # --------------------------------------------- v2 extension: cache regression
+    b.replace(
+        "backend/search/query_parser.py",
+        "import unicodedata\n",
+        "import unicodedata\nfrom functools import lru_cache\n",
+    )
+    b.replace(
+        "backend/search/query_parser.py", "def normalize_query(", "@lru_cache(maxsize=None)\ndef normalize_query("
+    )
+    b.commit("2026-02-11", "bob", "perf(search): memoise normalize_query with lru_cache")
+    b.replace("backend/search/query_parser.py", "from functools import lru_cache\n", "")
+    b.replace(
+        "backend/search/query_parser.py", "@lru_cache(maxsize=None)\ndef normalize_query(", "def normalize_query("
+    )
+    b.commit(
+        "2026-02-18",
+        "bob",
+        "fix(search): drop the unbounded lru_cache from normalize_query (INC-2760)",
+        "The cache kept every unique query string forever; a crawler spike grew search workers past 2 GB "
+        "until they died with MemoryError.",
+    )
+
     head = b._git("rev-parse", "HEAD")
     info = FixtureInfo(root=root, head=head, commits=dict(b.commits))
     info.failures = FAILURES
@@ -1348,6 +1526,34 @@ Tests:       1 failed, 6 passed, 7 total""",
         notes="Converted order totals to dollars inside the mobile order parser.",
         ts="2025-12-14",
     ),
+    FailureSpec(
+        tag="F8-shipping-floor",
+        path="backend/shipping/rates.py",
+        symbol="shipping_cents_for",
+        old="    brackets = -(-weight_grams // 100)  # carriers bill every started 100 g bracket (INC-2718)",
+        new="    brackets = weight_grams // 100",
+        command="pytest tests/backend/test_shipping.py -q",
+        error="""FAILED tests/backend/test_shipping.py::test_150g_parcel_billed_as_200g - assert 534 == 569
+E       assert 534 == 569
+E        +  where 534 = shipping_cents_for(150, 'domestic')""",
+        notes="Simplified the bracket computation in shipping_cents_for to plain integer division.",
+        ts="2026-02-20",
+    ),
+    FailureSpec(
+        tag="F9-password-eq",
+        path="backend/auth/password.py",
+        symbol="verify_password",
+        old="    return hmac.compare_digest(candidate, digest_hex)",
+        new="    return candidate == digest_hex",
+        command="semgrep --config p/python --error backend/auth",
+        error="""backend/auth/password.py
+  python.lang.security.audit.timing-attack.insecure-string-compare
+     Comparing secrets with == leaks timing information; use hmac.compare_digest.
+     22: return candidate == digest_hex
+Ran 1 rule on 1 file: 1 finding.""",
+        notes="Replaced hmac.compare_digest with == in verify_password for readability.",
+        ts="2026-02-21",
+    ),
 ]
 
 
@@ -1382,6 +1588,13 @@ INVARIANTS = [
         "INV-MONEY-003",
         "backend/utils/money.py::tax_cents",
         "Tax rounding must stay ROUND_HALF_EVEN to reconcile with the finance ledger (INC-2602).",
+        "critical",
+    ),
+    (
+        "INV-SEC-004",
+        "backend/auth/password.py",
+        "Password verification must stay constant-time (hmac.compare_digest) and PBKDF2 iterations must not drop "
+        "below 600k (SEC-150, SEC-152).",
         "critical",
     ),
 ]

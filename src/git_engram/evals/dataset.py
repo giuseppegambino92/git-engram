@@ -10,13 +10,15 @@ Relevance targets:
 overlap with the query); ``acceptable`` lists failures that are relevant enough not to count as false alarms.
 Queries are paraphrased: they deliberately avoid copying commit-message wording.
 
-Two splits:
+Three splits:
 
-* ``DEV_QUERIES`` (32) -- the calibration split. Every weight and threshold in the engine was chosen while
-  looking at these, so their scores are optimistic by construction.
-* ``TEST_QUERIES`` (24) -- the held-out split, written and committed *before* the query-adaptive router existed
-  and never used for any tuning decision. Many target fixture facts the dev split never asks about, and the
-  coupled-file queries approach each coupling from the opposite side. Report these as the headline numbers.
+* ``DEV_QUERIES`` (32) -- the calibration split. Every weight, threshold and design choice in the engine was made
+  while looking at these, so their scores are optimistic by construction.
+* ``TEST_V1_QUERIES`` (24) -- the first held-out split, committed before the query router. Its results were
+  later inspected to diagnose commit-capsule crowding, so it is **retired**: still reported, no longer unseen.
+* ``TEST_V2_QUERIES`` (24) -- the current held-out split, committed together with a fixture extension (shipping,
+  password hashing, dead-letter queue, cache regression) *before* the slot-budget fix existed. Half of it targets
+  facts that no other split mentions. Report these as the headline numbers.
 """
 
 from __future__ import annotations
@@ -267,7 +269,7 @@ DEV_QUERIES: list[EvalQuery] = [
 ]
 
 
-TEST_QUERIES: list[EvalQuery] = [
+TEST_V1_QUERIES: list[EvalQuery] = [
     # ------------------------------------------------------------------ causal "why"
     EvalQuery(
         "t-why-01",
@@ -419,5 +421,171 @@ TEST_QUERIES: list[EvalQuery] = [
     ),
 ]
 
+C_SHIP_CEIL = "commit:fix(shipping): round parcel weight up"
+C_SHIP_WEIGHT = "commit:fix(shipping): reject zero or negative parcel weights"
+C_SEC150 = "commit:fix(security): constant-time password comparison"
+C_SEC152 = "commit:fix(security): raise PBKDF2 iterations"
+C_DLQ = "commit:fix(worker): park poison messages"
+C_LRU_FIX = "commit:fix(search): drop the unbounded lru_cache"
+SHIP = "sym:backend/shipping/rates.py::shipping_cents_for"
+SHIP_WIDGET = "sym:web/src/components/ShippingEstimate.tsx::ShippingEstimate"
+VERIFY_PW = "sym:backend/auth/password.py::verify_password"
+PW_MODULE = "sym:backend/auth/password.py::<module>"
+DEAD_LETTER = "sym:worker/pkg/queue/dlq.go::Consumer.DeadLetter"
+
+TEST_V2_QUERIES: list[EvalQuery] = [
+    # ------------------------------------------------------------------ causal "why"
+    EvalQuery(
+        "v2-why-01",
+        "causal",
+        "why is the parcel weight rounded up instead of down when pricing shipping",
+        {C_SHIP_CEIL: 2, SHIP: 1},
+        ("F8-shipping-floor",),
+    ),
+    EvalQuery(
+        "v2-why-02",
+        "causal",
+        "why does verify_password use hmac.compare_digest instead of ==",
+        {C_SEC150: 2, VERIFY_PW: 1},
+        ("F9-password-eq",),
+    ),
+    EvalQuery(
+        "v2-why-03",
+        "causal",
+        "why do poison messages get published to a separate topic",
+        {C_DLQ: 2, DEAD_LETTER: 1},
+        acceptable=("F5-ack-order",),
+    ),
+    EvalQuery(
+        "v2-why-04",
+        "causal",
+        "what was the reasoning behind removing the cache decorator from normalize_query",
+        {C_LRU_FIX: 2, NORMALIZE: 1},
+    ),
+    EvalQuery(
+        "v2-why-05",
+        "causal",
+        "why does the receipt template carry a Content-Security-Policy meta tag",
+        {C_SEC131: 2, "file:backend/templates/receipt.html": 1},
+    ),
+    EvalQuery(
+        "v2-why-06",
+        "causal",
+        "rationale for using 600k PBKDF2 iterations",
+        {C_SEC152: 2, PW_MODULE: 1},
+        acceptable=("F9-password-eq",),
+    ),
+    # ------------------------------------------------------------- bug / regression
+    EvalQuery(
+        "v2-bug-01",
+        "regression",
+        "a 150 gram parcel was charged as if it weighed 100 grams",
+        {C_SHIP_CEIL: 2, SHIP: 1},
+        ("F8-shipping-floor",),
+    ),
+    EvalQuery(
+        "v2-bug-02",
+        "regression",
+        "search workers ran out of memory after a spike of unique queries",
+        {C_LRU_FIX: 2, NORMALIZE: 1},
+    ),
+    EvalQuery(
+        "v2-bug-03",
+        "regression",
+        "one malformed order message was redelivered forever and blocked the queue",
+        {C_DLQ: 2, DEAD_LETTER: 1},
+        acceptable=("F5-ack-order",),
+    ),
+    EvalQuery(
+        "v2-bug-04",
+        "regression",
+        "attackers could learn about stored hashes by measuring login response times",
+        {C_SEC150: 2, VERIFY_PW: 1},
+        ("F9-password-eq",),
+    ),
+    EvalQuery(
+        "v2-bug-05",
+        "regression",
+        "clients whose clock runs fast get kicked out of the app straight away",
+        {C_SKEW: 2, TOKEN: 1},
+        ("F1-clock-skew",),
+    ),
+    EvalQuery(
+        "v2-bug-06",
+        "regression",
+        "concurrent checkouts from two tabs charged an outdated basket",
+        {C_STALE: 2, CHECKOUT: 1},
+        acceptable=("F3-asyncio",),
+    ),
+    # ------------------------------------------------------------------ coupled files
+    EvalQuery(
+        "v2-cpl-01",
+        "coupled",
+        "add an apac zone to the shipping rate tables",
+        {"file:backend/shipping/rates.py": 2, "file:web/src/components/ShippingEstimate.tsx": 2},
+        coupled="web/src/components/ShippingEstimate.tsx",
+        acceptable=("F8-shipping-floor",),
+    ),
+    EvalQuery(
+        "v2-cpl-02",
+        "coupled",
+        "change the zone dropdown in the ShippingEstimate component",
+        {SHIP_WIDGET: 2, "file:backend/shipping/rates.py": 2},
+        coupled="backend/shipping/rates.py",
+        acceptable=("F8-shipping-floor",),
+    ),
+    EvalQuery(
+        "v2-cpl-03",
+        "coupled",
+        "rename the dead_letter_topic key in the worker config",
+        {"file:worker/config/worker.yaml": 2, "file:worker/pkg/queue/dlq.go": 2},
+        coupled="worker/pkg/queue/dlq.go",
+        acceptable=("F5-ack-order",),
+    ),
+    EvalQuery(
+        "v2-cpl-04",
+        "coupled",
+        "change the PAYMENT_GATEWAY_URL default in settings.py",
+        {"file:backend/config/settings.py": 2, "file:deploy/helm/values.yaml": 2},
+        coupled="deploy/helm/values.yaml",
+        acceptable=("F2-idempotency",),
+    ),
+    EvalQuery(
+        "v2-cpl-05",
+        "coupled",
+        "make the weight bracket size used by shipping_cents_for configurable",
+        {SHIP: 2, "file:web/src/components/ShippingEstimate.tsx": 1},
+        coupled="web/src/components/ShippingEstimate.tsx",
+        acceptable=("F8-shipping-floor",),
+    ),
+    EvalQuery(
+        "v2-cpl-06",
+        "coupled",
+        "add a parcel weight column to the orders table",
+        {"file:backend/db/schema.sql": 2, ORDER_ROW: 2},
+        coupled="backend/db/models.py",
+    ),
+    # ----------------------------------------------------------- exact identifiers
+    EvalQuery(
+        "v2-err-01",
+        "error-code",
+        "ERR_SHIPPING_WEIGHT",
+        {SHIP: 2, C_SHIP_WEIGHT: 2, SHIP_WIDGET: 1},
+        acceptable=("F8-shipping-floor",),
+    ),
+    EvalQuery("v2-err-02", "error-code", "INC-2718", {C_SHIP_CEIL: 2, SHIP: 1}, acceptable=("F8-shipping-floor",)),
+    EvalQuery("v2-err-03", "error-code", "SEC-150", {C_SEC150: 2, VERIFY_PW: 1}, acceptable=("F9-password-eq",)),
+    EvalQuery("v2-err-04", "error-code", "INC-2741 dead letter", {C_DLQ: 2, DEAD_LETTER: 1}),
+    EvalQuery("v2-err-05", "error-code", "MemoryError in normalize_query", {NORMALIZE: 2, C_LRU_FIX: 1}),
+    EvalQuery(
+        "v2-err-06",
+        "error-code",
+        "assert 534 == 569 in test_150g_parcel_billed_as_200g",
+        {SHIP: 2, C_SHIP_CEIL: 1},
+        ("F8-shipping-floor",),
+    ),
+]
+
+TEST_QUERIES = TEST_V2_QUERIES  # current held-out split
 QUERIES = DEV_QUERIES  # backwards-compatible alias
-SPLITS = {"dev": DEV_QUERIES, "test": TEST_QUERIES}
+SPLITS = {"dev": DEV_QUERIES, "test_v1": TEST_V1_QUERIES, "test_v2": TEST_V2_QUERIES}
