@@ -40,6 +40,11 @@ dev = ["pytest>=8", "tree-sitter>=0.23", "tree-sitter-language-pack>=0.7", "text
 [project.scripts]
 git-engram = "git_engram.cli.main:main"
 
+[project.urls]
+Homepage = "https://github.com/giuseppegambino92/git-engram"
+Repository = "https://github.com/giuseppegambino92/git-engram"
+Issues = "https://github.com/giuseppegambino92/git-engram/issues"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/git_engram"]
 

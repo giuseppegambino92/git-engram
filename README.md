@@ -18,6 +18,13 @@ served over the **Model Context Protocol** in ~2 ms. No LangChain, no LlamaIndex
 
 ---
 
+**Contents:** [The problem](#the-problem-causal-amnesia) · [What the agent sees](#what-the-agent-sees) ·
+[Benchmark](#benchmark) · [Architecture](#architecture) · [Quickstart](#quickstart) · [MCP tools](#mcp-tools) ·
+[CLI](#cli) · [Dashboard](#interactive-dashboard) · [Python API](#python-api) ·
+[Data & privacy](#what-is-stored-and-what-stays-local) · [Configuration](#configuration) ·
+[Dogfooding](#dogfooding-git-engram-on-itself) · [Development](#development) · [Limitations](#limitations) ·
+[Roadmap](#roadmap)
+
 ## The problem: Causal Amnesia
 
 Code RAG indexes what the code **is**. Agents break things because of what the code **was**:
@@ -95,12 +102,12 @@ before the change it evaluates; `git merge-base --is-ancestor` verifies each pai
 
 | split | queries | status | committed in |
 |---|---:|---|---|
-| dev / calibration | 48 | every weight, threshold and design choice was made looking at these (behavioral `d30f316`, NL bug reports `645eecf`) | `54dc0c0` |
+| dev / calibration | 48 | every weight, threshold and design choice was made looking at these (behavioral `6f9e13e`, NL bug reports `7e41bc1`) | `54dc0c0` |
 | held-out v1 | 24 | retired: used to diagnose commit crowding | `d049d5e`, before the router `1a7d202` |
-| held-out v2 | 24 | retired: used to diagnose false alarms | `f32fee5`, before the slot budget `06e7d44` |
-| held-out v3 | 24 | retired: used to diagnose the causal regression and sibling false alarms | `fa34600`, before symbol anchoring `45bf5c2` |
-| held-out v4 | 30 | retired: used to diagnose warning recall and regression routing | `89d249f`, before code-first routing and gating `9e4e3e3` |
-| held-out **v5** | 30 | **headline**: promotions / CSV-export extension, natural-language bug reports, sibling probes | `d39d10a`, before the top-commit trigger and symptom routing `a287a04` |
+| held-out v2 | 24 | retired: used to diagnose false alarms | `cc98b38`, before the slot budget `20cdcec` |
+| held-out v3 | 24 | retired: used to diagnose the causal regression and sibling false alarms | `df0f18b`, before symbol anchoring `3ab2409` |
+| held-out v4 | 30 | retired: used to diagnose warning recall and regression routing | `91ea29f`, before code-first routing and gating `a4f0cba` |
+| held-out **v5** | 30 | **headline**: promotions / CSV-export extension, natural-language bug reports, sibling probes | `f6a6f0f`, before the top-commit trigger and symptom routing `8465b92` |
 
 During the v4 round, one v4 query ran once in a unit test before the final evaluation (settings were already frozen).
 A guard test (`test_no_test_file_contains_held_out_query_text`) now covers every held-out split, and no held-out
@@ -381,15 +388,19 @@ matching invariant *always* fires.
 
 ## Quickstart
 
+**Requirements:** Python 3.11+ and `git` on `PATH`. Runtime dependencies are `numpy`, `pydantic`, `rich` and `mcp`;
+no GPU, no network access and no API keys.
+
 ```bash
-pipx install git-engram            # or: uv tool install git-engram
+pipx install "git+https://github.com/giuseppegambino92/git-engram"   # or: uv tool install git+https://...
 cd your-repo
 git-engram index                   # AST + history + co-change graph + embeddings
 git-engram preflight src/auth/token.py -s is_token_expired -i "remove the grace period"
 ```
 
-> PyPI release pending. Until then, from a clone: `pipx install .` or `uv tool install .`. Extras: `[tui]` for the dashboard,
-> `[treesitter]` for tree-sitter grammars, `[onnx]` for neural embeddings and cross-encoders.
+From a clone: `pipx install .` (or `uv tool install .`). Optional extras: `[tui]` for the dashboard, `[treesitter]`
+for tree-sitter grammars, `[onnx]` for neural embeddings and cross-encoders, e.g.
+`pipx install ".[tui,treesitter]"`. A PyPI release is planned.
 
 ### Claude Code
 
@@ -463,47 +474,105 @@ cosine, graph activation, TD-RRF score, recency multiplier, rerank score and per
 The screenshots are real renders of the benchmark repository (`App.save_screenshot()`). `tests/test_tui.py` drives the
 same app headlessly.
 
+## Python API
+
+Everything the CLI and the MCP server do is available from the `Engram` facade:
+
+```python
+from git_engram.engine import Engram
+from git_engram.render import render_preflight
+
+with Engram("path/to/repo") as engram:
+    engram.index()                                   # incremental after the first run
+
+    resp = engram.search("why does the cache take a lock on reads", top_k=5)
+    print(resp.query_class, resp.fusion_weights)     # router decision, here "causal"
+    for hit in resp.hits:
+        print(hit.kind, hit.title, hit.bm25_rank, hit.vec_rank, hit.graph_rank, round(hit.score, 3))
+    for warning in resp.warnings:                    # Negative RAG: failed attempts not to repeat
+        print(warning.failure_id, warning.match_reason)
+
+    report = engram.preflight("src/payments/retry.py", "charge_with_retry", "new key per retry")
+    print(render_preflight(report))                  # the exact block an MCP client receives
+
+    engram.record_failure(file_path="src/payments/retry.py", attempted_diff=diff_text,
+                          error_trace=pytest_output, notes="tried a fresh key per retry")
+    engram.record_invariant("PAY-1", "src/payments/**", "One idempotency key per order", "critical")
+```
+
+Results are typed pydantic models (`SearchResponse`, `Hit`, `FailureWarning`, `PreflightReport`), so `.model_dump_json()`
+gives a stable JSON shape.
+
+## What is stored, and what stays local
+
+git-engram is local-first: it never opens a network connection, sends no telemetry and needs no API key. Everything
+lives in `.engram/` at the repository root:
+
+| path | content | commit it? |
+|---|---|---|
+| `.engram/engram.db` | SQLite (WAL): symbols, commit capsules, co-change graph, FTS5 index, quantized vectors, graveyard, embedder state | no (it is rebuilt from git; a `.engram/.gitignore` is created automatically) |
+| `.engram/invariants.okf.json` | OKF invariants recorded via CLI/MCP | **yes**: it is shared team knowledge |
+| `.engram/config.json` | optional configuration overrides | your choice |
+
+The Graveyard stores the diffs and error output of failed attempts. That data stays in the local database and is only
+ever returned through the context firewall. Delete `.engram/engram.db` to forget everything except the invariants.
+
 ## Dogfooding: git-engram on itself
 
 This repository is built as atomic commits (`git log --oneline`), so git-engram can index its own history:
 
 ```console
 $ git-engram index .
-  files 72 · AST symbols 640 · commits 26 · documents 640 · co-change edges file/symbol 30/78   (at 06e7d44)
+  files 72 · AST symbols 743 · commits 41 · documents 671 · co-change edges file/symbol 96/349
 $ git-engram preflight src/git_engram/retrieval/engine.py -s HybridRetriever._slot_budget \
       -i "drop the commit cap from top-k assembly"
 <ast_context>
-  method HybridRetriever._slot_budget  src/git_engram/retrieval/engine.py:L331-L349
-  blame ownership: 06e7d44d [feature] 100%
+  method HybridRetriever._slot_budget  src/git_engram/retrieval/engine.py:L342-L360
+  blame ownership: 20cdcece [feature] 100%
 </ast_context>
 <causal_history>
-  2026-11-13 06e7d44dd4 [feature] feat(retrieval): commit slot budget and parent-symbol commit attachment (+19 -0)
+  2026-11-13 20cdcece6e [feature] feat(retrieval): commit slot budget and parent-symbol commit attachment (+19 -0)
 </causal_history>
 <co_change_coupling>
-  src/git_engram/retrieval/reranker.py  W=0.82  P(changes|target changes)=67%  co-commits=2  [import-linked]
-  src/git_engram/config.py  W=0.67  P(changes|target changes)=67%  co-commits=2  [import-linked]
-  src/git_engram/models.py  W=0.67  P(changes|target changes)=67%  co-commits=2  [import-linked]
-  src/git_engram/render.py  W=0.67  P(changes|target changes)=67%  co-commits=2  [import-linked]
+  src/git_engram/config.py  W=0.83  P(changes|target changes)=83%  co-commits=5  [import-linked]
+  src/git_engram/retrieval/router.py  W=0.82  P(changes|target changes)=67%  co-commits=4  [import-linked]
+  tests/test_router.py  W=0.82  P(changes|target changes)=67%  co-commits=4  [hidden: no import link]
+  tests/test_retrieval.py  W=0.73  P(changes|target changes)=67%  co-commits=4  [import-linked]
+  src/git_engram/engine.py  W=0.73  P(changes|target changes)=67%  co-commits=4  [import-linked]
 </co_change_coupling>
+<related_memory>
+  [symbol] function test_slot_budget_defers_instead_of_dropping  (tests/test_retrieval.py)
+  ...
 ```
 
-From its own history, git-engram learned that a change to the retrieval engine usually needs matching changes in
-`config.py`, `models.py` and `render.py`, which is exactly what the router and slot-budget commits had to do. The
-evaluation protocol is checkable the same way: `git log` shows each held-out split committed before the change it
-evaluates (see the table in the benchmark section).
+From its own history, git-engram learned that a change to the retrieval engine almost always needs a matching change
+in `config.py` (83% of the time), and that `tests/test_router.py` is a *hidden* coupling: it changes with the engine
+although it never imports it. The evaluation protocol is checkable the same way: `git merge-base --is-ancestor`
+confirms that each held-out split was committed before the change it evaluates (see the benchmark section).
 
 ## Configuration
 
-Optional `.engram/config.json` (every knob of the math is explicit; see [`config.py`](src/git_engram/config.py)):
+Optional `.engram/config.json`. Every knob of the math is explicit (see [`config.py`](src/git_engram/config.py)); the
+values below are the defaults:
 
 ```json
 {
-  "embedding": { "backend": "hashing-lsa", "full_dim": 384, "mrl_dim": 256 },
-  "retrieval": { "rrf_k": 60, "w_graph": 1.0, "recency_alpha": 0.25, "recency_half_life_days": 120,
-                 "stage1_candidates": 400, "diversity_penalty": 0.1, "cross_encoder_dir": null },
-  "graph":     { "half_life_days": 365, "max_files_per_commit": 40, "min_support": 2 },
-  "graveyard": { "semantic_threshold": 0.40, "context_weight": 0.30, "textual_weight": 0.60 },
-  "index":     { "max_commits": 5000, "blame": true, "tree_sitter": true, "allow_grammar_download": false }
+  "embedding": { "backend": "hashing-lsa", "full_dim": 384, "mrl_dim": 256, "onnx_model_dir": null },
+  "retrieval": {
+    "rrf_k": 60, "w_bm25": 1.0, "w_vec": 1.0, "w_graph": 1.0, "adaptive_routing": true,
+    "recency_alpha": 0.25, "recency_half_life_days": 120, "stage1_candidates": 400, "rerank_top_n": 30,
+    "commit_slots": { "causal": 3, "behavioral": 2, "symptom": 2, "change": 0, "exact": 2, "general": 2 },
+    "pin_position": 1, "pin_classes": ["behavioral", "exact", "change"],
+    "mmr": false, "diversity_penalty": 0.1, "cross_encoder_dir": null
+  },
+  "graph": { "half_life_days": 365, "max_files_per_commit": 40, "min_support": 2 },
+  "graveyard": {
+    "semantic_threshold": 0.40, "context_weight": 0.30, "textual_weight": 0.60, "sibling_weight": 0.25,
+    "anchor": "symbol", "commit_gating": true, "commit_gate": 0.9, "gate_code_hits": 5,
+    "commit_trigger_rank1": true, "commit_trigger_score": 0.65, "trigger_weight": 0.40,
+    "trigger_intents": ["bugfix", "security", "revert"]
+  },
+  "index": { "max_commits": 5000, "blame": true, "tree_sitter": true, "allow_grammar_download": false }
 }
 ```
 
@@ -517,7 +586,7 @@ Both run on raw ONNX Runtime + `tokenizers`, with no torch.
 
 ```bash
 uv venv && uv pip install -e ".[dev]"
-pytest -q                                    # 143 tests, fully offline (verified on Python 3.11 and 3.14)
+pytest -q                                    # 143 tests, fully offline (Python 3.11 and 3.14 verified)
 GIT_ENGRAM_NO_TREE_SITTER=1 pytest -q        # what CI runners without cached grammars execute
 ruff check src tests
 git-engram benchmark
@@ -550,6 +619,29 @@ have dedicated tests, and a guard test fails if any test file executes held-out 
 - Verified locally on macOS with Python 3.11 and 3.14. The CI matrix (Linux + macOS, 3.11–3.13) is configured but
   has not yet run on GitHub. Windows path handling is untested.
 
+## Roadmap
+
+- **Precision of the direct warning trigger.** Restrict it further (e.g. require the fix commit to have touched the
+  *retrieved* function's file region) to bring false alarms on sibling-heavy code down to the BM25 level without
+  losing the recall it restored. Like every change, this needs a fresh held-out split.
+- **Exact-identifier ranking.** Close the remaining small gap to raw BM25 on error codes and ticket ids.
+- **Real-repository evaluation.** Complement the synthetic fixture with an annotated benchmark on public repositories.
+- **PyPI release** and pre-built ONNX model recipes.
+- **Windows** path handling and CI coverage.
+
+## Contributing
+
+Issues and pull requests are welcome. Before opening a PR:
+
+```bash
+ruff check src tests && ruff format --check src tests
+pytest -q && GIT_ENGRAM_NO_TREE_SITTER=1 pytest -q
+git-engram benchmark            # attach the numbers if the change touches retrieval
+```
+
+Retrieval changes follow the evaluation protocol above: tune on `DEV_QUERIES` only. A claim of improvement needs a new
+held-out split committed *before* the change, and `test_no_test_file_contains_held_out_query_text` must keep passing.
+
 ## License
 
-MIT
+MIT, see [`LICENSE`](LICENSE).
