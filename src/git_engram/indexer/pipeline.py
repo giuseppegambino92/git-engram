@@ -94,6 +94,9 @@ class Indexer:
         if not full and head and last and last != head and not self.git.is_ancestor(last, head):
             full = True
         stats.mode = "full" if full else "incremental"
+        if not full:
+            # A fresh process holds an unfitted embedder: restore the persisted projection before embedding new docs.
+            self.embedder.load_state(self.db.get_meta("embedder_state"))
         if full:
             self.db.reset_derived()
 

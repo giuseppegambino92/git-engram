@@ -200,3 +200,28 @@ def test_mcp_stdio_subprocess(mini_repo):
     inv, fail, pre = asyncio.run(go())
     assert "PAY-1" in inv and "recorded as failure #1" in fail
     assert "PAY-1" in pre and "converted to dollars" in pre
+
+
+def test_incremental_index_in_a_fresh_process(mini_repo):
+    """Regression: a new Engram instance (unfitted embedder) must be able to index new commits incrementally."""
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    mini_repo.write("svc/a.py", "def alpha():\n    return 1\n")
+    mini_repo.commit("feat: alpha")
+    with Engram(mini_repo.root) as e:
+        assert e.index().mode == "full"
+    mini_repo.write("svc/b.py", "def beta_refund_window():\n    return 30\n")
+    mini_repo.commit("feat: refund window for beta customers")
+    with Engram(mini_repo.root) as fresh:
+        stats = fresh.index()
+        assert stats.mode == "incremental" and stats.new_commits == 1 and stats.embedded > 0
+        assert fresh.db.get_meta("last_head") == fresh.git.head()
+        assert any(h.symbol == "beta_refund_window" for h in fresh.search("refund window").hits)
+    mini_repo.write("svc/c.py", "def gamma():\n    return 3\n")
+    mini_repo.commit("feat: gamma")
+    exe = str(Path(sys.executable).with_name("git-engram"))
+    proc = subprocess.run([exe, "-C", str(mini_repo.root), "index"], capture_output=True, text=True)
+    assert proc.returncode == 0, proc.stderr
+    assert "incremental" in proc.stdout

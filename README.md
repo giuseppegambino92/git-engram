@@ -10,7 +10,7 @@ served over the **Model Context Protocol** in ~2 ms. No LangChain, no LlamaIndex
 ![python](https://img.shields.io/badge/python-3.11%2B-3776AB)
 ![license](https://img.shields.io/badge/license-MIT-green)
 ![MCP](https://img.shields.io/badge/MCP-stdio%20server-7c3aed)
-![tests](https://img.shields.io/badge/tests-124%20passing-brightgreen)
+![tests](https://img.shields.io/badge/tests-125%20passing-brightgreen)
 ![frameworks](https://img.shields.io/badge/black--box%20frameworks-0-black)
 ![latency](https://img.shields.io/badge/preflight%20P95-1.6%20ms-orange)
 
@@ -490,7 +490,7 @@ Both run on raw ONNX Runtime + `tokenizers`, with no torch.
 
 ```bash
 uv venv && uv pip install -e ".[dev]"
-pytest -q                                    # 124 tests, fully offline (verified on Python 3.11 and 3.14)
+pytest -q                                    # 125 tests, fully offline (verified on Python 3.11 and 3.14)
 GIT_ENGRAM_NO_TREE_SITTER=1 pytest -q        # what CI runners without cached grammars execute
 ruff check src tests
 git-engram benchmark
@@ -499,7 +499,7 @@ git-engram benchmark
 The suite covers quantization math (Hamming kernels vs. an `unpackbits` reference, SimHash angle estimation, int8
 error bounds, counting select), AST chunking for 5 languages, `git log` patch parsing and per-symbol attribution
 across renames, the co-change formula against a hand computation, TD-RRF, spreading activation, `exec` auto-capture
-through the real CLI, incremental re-indexing, the context firewall, OKF invariants, MCP tools in-process **and over
+through the real CLI, incremental re-indexing (including from a fresh process), the context firewall, OKF invariants, MCP tools in-process **and over
 a real stdio subprocess**, the query router, the Textual dashboard (headless), the dev/test split integrity, and the
 benchmark end to end. The benchmark test only asserts "beats every baseline" on the **dev** split; held-out numbers
 are reported, never asserted or tuned against. The slot budget has tests for its caps, for deferring rather than
