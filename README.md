@@ -616,8 +616,8 @@ have dedicated tests, and a guard test fails if any test file executes held-out 
 - **Exact identifiers:** BM25 still leads slightly (0.889 vs 0.874 on v5).
 - Some graveyard matches sit close to the 0.40 threshold, so re-fitting the embedder (`--rebuild`) can flip a
   purely textual warning. Warnings anchored to the same symbol (preflight) are robust.
-- Verified locally on macOS with Python 3.11 and 3.14. The CI matrix (Linux + macOS, 3.11–3.13) is configured but
-  has not yet run on GitHub. Windows path handling is untested.
+- Tested in CI on Linux and macOS with Python 3.11, 3.12 and 3.13 (and locally on 3.14). Windows path handling is
+  untested.
 
 ## Roadmap
 
