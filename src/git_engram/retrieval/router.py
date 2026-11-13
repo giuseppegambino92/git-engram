@@ -9,8 +9,8 @@ causal      "why / reason / purpose / motivation / what changed ..."      graph 
                                                                           prefers commits and failures
 change      imperative "add / change / rename / tune / raise ..."         graph up: hidden co-changes
                                                                           are the point of the query
-exact       commit hash, error code (ERR_X, E4012, INC-123), exception    BM25 up, dense down: verbatim
-            name, quoted string, file path                                tokens beat semantics
+exact       commit hash, error code (ERR_X, E4012, INC-123), exception    BM25 up, dense/graph down; reranker
+            name, quoted string, file path                                weights verbatim-token hits
 symptom     natural-language bug report ("billed twice", "logged out",    graph down; reranker prefers
             "crashes", "KeyError under load", ...) without identifiers    the commits that fixed it
 general     anything else                                                 neutral weights
@@ -53,12 +53,12 @@ _PATH = re.compile(r"\b[\w.-]+/[\w./-]+|\b\w+\.(?:py|ts|tsx|js|go|rs|java|sql|ya
 
 WEIGHTS: dict[str, dict[str, float]] = {
     "causal": {"bm25": 1.0, "vec": 1.0, "graph": 0.5},
-    "exact": {"bm25": 1.6, "vec": 0.6, "graph": 0.5},
+    "exact": {"bm25": 2.0, "vec": 0.4, "graph": 0.2},
     "change": {"bm25": 1.0, "vec": 1.0, "graph": 1.3},
     "symptom": {"bm25": 1.2, "vec": 1.0, "graph": 0.3},
     "general": {"bm25": 1.0, "vec": 1.0, "graph": 1.0},
 }
-RERANK_INTENT = {"causal": "causal", "symptom": "causal", "change": "change", "exact": "neutral", "general": "auto"}
+RERANK_INTENT = {"causal": "causal", "symptom": "causal", "change": "change", "exact": "exact", "general": "auto"}
 
 
 @dataclass(frozen=True)

@@ -124,7 +124,9 @@ def test_fixture_history_and_hidden_coupling(shopfront):
     targets = {r["dst"]: r for r in rows}
     assert "mobile/src/parsers/orderParser.ts" in targets
     edge = targets["mobile/src/parsers/orderParser.ts"]
-    assert edge["static_link"] == 0 and edge["support"] >= 5 and edge["weight"] > 0.5
+    assert edge["static_link"] == 0 and edge["support"] >= 5
+    # Time decay lowers old couplings as history grows, so assert rank rather than an absolute weight.
+    assert edge["weight"] == max(r["weight"] for r in rows if not r["static_link"])
     blame = e.db.query(
         "SELECT b.lines, c.intent FROM symbol_blame b JOIN commits c ON c.hash=b.hash "
         "WHERE b.path='backend/auth/token.py' AND b.qualname='is_token_expired'"

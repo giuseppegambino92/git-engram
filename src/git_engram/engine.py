@@ -27,6 +27,7 @@ from .security.sanitizer import CharTrigramLM, ContextFirewall
 from .storage.db import EngramDB
 
 ENGRAM_DIR = ".engram"
+MODULE_SYMBOL = "<module>"
 
 
 class HistoryEntry(BaseModel):
@@ -241,9 +242,15 @@ class Engram:
         query: str | None,
         path: str | None = None,
         symbol: str | None = None,
-        context_files: list[str] | None = None,
+        context_hits: list[Hit] | None = None,
         query_vec=None,
     ) -> list[FailureWarning]:
+        """Score recorded failures against the current query / edit target.
+
+        Structural evidence is **symbol-level**: a failure whose diff touched a named function only gets credit when
+        that same function is the edit target or was retrieved (directly, or as a function changed by a retrieved
+        commit). Failures whose diff sits outside any named symbol (``<module>``) fall back to file-level matching.
+        """
         cfg = self.cfg.graveyard
         scores: dict[int, float] = {}
         reasons: dict[int, list[str]] = {}
@@ -264,19 +271,42 @@ class Engram:
             scores[fid] = scores.get(fid, 0.0) + value
             note(fid, reason)
 
+        def same_symbol(a: str, b: str) -> bool:
+            return a == b or a.endswith("." + b) or b.endswith("." + a)
+
         if path:
             for r in self.db.query("SELECT failure_id, symbol FROM failure_targets WHERE path = ?", (path,)):
                 fid = int(r["failure_id"])
                 sym = r["symbol"] or ""
-                if symbol and sym and (sym == symbol or sym.endswith("." + symbol) or symbol.endswith("." + sym)):
+                named = bool(sym) and sym != MODULE_SYMBOL
+                if symbol and named and same_symbol(sym, symbol):
                     add_structural(fid, 0.75, f"same symbol {path}::{sym}")
+                elif symbol and named:
+                    add_structural(fid, cfg.sibling_weight, f"other function in {path} ({sym})")
                 else:
                     add_structural(fid, 0.5, f"same file {path}")
-        for cf in (context_files or [])[:3]:
-            if cf == path:
-                continue
-            for r in self.db.query("SELECT DISTINCT failure_id FROM failure_targets WHERE path = ?", (cf,)):
-                add_structural(int(r["failure_id"]), cfg.context_weight, f"targets retrieved file {cf}")
+        ctx_symbols, ctx_files = self._retrieved_context(context_hits or [], cfg.context_hits)
+        if cfg.anchor == "file":  # legacy behaviour (first 3 hit paths, any function), kept for the ablation study
+            for cf in [h.path for h in (context_hits or []) if h.path][: cfg.context_hits]:
+                if cf == path:
+                    continue
+                for r in self.db.query("SELECT DISTINCT failure_id FROM failure_targets WHERE path = ?", (cf,)):
+                    add_structural(int(r["failure_id"]), cfg.context_weight, f"targets retrieved file {cf}")
+            ctx_symbols, ctx_files = set(), set()
+        if ctx_symbols or ctx_files:
+            for r in self.db.query("SELECT failure_id, path, symbol FROM failure_targets"):
+                fpath, fsym = r["path"], r["symbol"] or ""
+                if fpath == path:
+                    continue
+                if fsym and fsym != MODULE_SYMBOL:
+                    if any(p == fpath and same_symbol(fsym, s) for p, s in ctx_symbols):
+                        add_structural(
+                            int(r["failure_id"]), cfg.context_weight, f"targets retrieved symbol {fpath}::{fsym}"
+                        )
+                elif fpath in ctx_files:
+                    add_structural(
+                        int(r["failure_id"]), cfg.context_weight, f"module-level change in retrieved file {fpath}"
+                    )
         for fid, (value, reason) in structural.items():
             add(fid, value, reason)
         if query:
@@ -334,6 +364,29 @@ class Engram:
             )
         return out
 
+    def _retrieved_context(self, hits: list[Hit], depth: int) -> tuple[set[tuple[str, str]], set[str]]:
+        """Symbols and files the top retrieved hits point at. A focused commit hit contributes the symbols it modified;
+        bulk commits (more than ``max_commit_context_symbols`` symbols, e.g. an initial import) contribute nothing."""
+        cfg = self.cfg.graveyard
+        symbols: set[tuple[str, str]] = set()
+        files: set[str] = set()
+        for h in hits[:depth]:
+            if h.kind == "symbol" and h.path and h.symbol:
+                files.add(h.path)
+                if h.symbol != MODULE_SYMBOL:
+                    symbols.add((h.path, h.symbol))
+            elif h.kind == "file" and h.path:
+                files.add(h.path)
+            elif h.kind == "commit" and cfg.commit_context:
+                rows = self.db.query("SELECT path, qualname FROM symbol_commits WHERE hash = ?", (h.doc_key[7:],))
+                if len(rows) > cfg.max_commit_context_symbols:
+                    continue
+                for r in rows:
+                    files.add(r["path"])
+                    if r["qualname"] != MODULE_SYMBOL:
+                        symbols.add((r["path"], r["qualname"]))
+        return symbols, files
+
     def coupling_for(self, path: str, limit: int = 6) -> list[CouplingAlert]:
         graph = self.retriever.graph
         return [
@@ -371,7 +424,7 @@ class Engram:
                     if alert.target not in seen and alert.target not in anchor_files:
                         seen.add(alert.target)
                         coupling.append(alert)
-            warnings = self.graveyard_matches(query, file, None, hit_files, result.query_vec)
+            warnings = self.graveyard_matches(query, file, None, result.hits, result.query_vec)
             for w in warnings:
                 w.signature = self._clean(w.signature, findings)
                 w.diff_excerpt = self._clean(w.diff_excerpt, findings)

@@ -32,7 +32,7 @@ def test_weights_and_intent():
     exact, symptom, change = classify("E1234"), classify("emails go missing"), classify("add a column")
     assert exact.weights["bm25"] > exact.weights["vec"]
     assert symptom.weights["graph"] < WEIGHTS["general"]["graph"] < change.weights["graph"]
-    assert symptom.intent == "causal" and change.intent == "change" and exact.intent == "neutral"
+    assert symptom.intent == "causal" and change.intent == "change" and exact.intent == "exact"
 
 
 def test_router_is_reported_and_can_be_disabled(shopfront):

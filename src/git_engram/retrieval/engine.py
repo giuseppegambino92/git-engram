@@ -30,7 +30,7 @@ class RetrievalMode:
     time_decay: bool = True
     rerank: bool = True
     negative: bool = True
-    diversify: bool = True
+    diversify: bool = False
     route: bool = True
     slot_budget: bool = True
     exclude_kinds: frozenset[str] = frozenset({"failure"})
@@ -282,7 +282,7 @@ class HybridRetriever:
             scores = self.reranker.rerank(query, cands, profile.intent if profile else "auto")
             rerank_scores = {c.doc_id: s for c, s in zip(cands, scores, strict=True)}
             head = sorted(ids, key=lambda d: (-rerank_scores[d], d))
-            if mode.diversify:
+            if mode.diversify or cfg.mmr:
                 head = self._diversify(head, rerank_scores)
             order = head + [d for d, _, _ in fused[cfg.rerank_top_n :]]
         if mode.slot_budget:

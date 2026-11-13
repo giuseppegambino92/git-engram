@@ -38,6 +38,7 @@ class RetrievalConfig(BaseModel):
     graph_decay: float = 0.85
     graph_min_weight: float = 0.15
     rerank_top_n: int = 30
+    mmr: bool = False  # opt-in: MMR file diversity lowered held-out nDCG@5 on two consecutive unseen splits
     diversity_penalty: float = 0.10
     # Slot budget: at most this many commit capsules inside the first ``slot_window`` results, per router class.
     slot_window: int = 5
@@ -110,6 +111,11 @@ class GraveyardConfig(BaseModel):
     max_diff_bytes: int = 131_072
     semantic_threshold: float = 0.40
     context_weight: float = 0.30
+    context_hits: int = 3
+    sibling_weight: float = 0.25
+    commit_context: bool = True
+    anchor: str = "symbol"  # "symbol" (default) or "file" (legacy: any failure in a top-3 file gets credit)
+    max_commit_context_symbols: int = 8
     textual_weight: float = 0.60
     max_warnings: int = 3
 

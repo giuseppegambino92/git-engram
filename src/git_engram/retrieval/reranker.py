@@ -89,6 +89,20 @@ class InteractionReranker:
         "intent": 0.05,
         "graph": 0.15,
     }
+    # Exact-identifier queries (hashes, error codes, exception names): verbatim token hits and the BM25-heavy fused
+    # prior dominate; dense similarity says little about "ERR_X" vs "ERR_Y".
+    PROFILE_WEIGHTS: dict[str, dict[str, float]] = {
+        "exact": {
+            "prior": 0.32,
+            "coverage": 0.16,
+            "field": 0.10,
+            "proximity": 0.04,
+            "exact": 0.25,
+            "dense": 0.02,
+            "intent": 0.0,
+            "graph": 0.05,
+        },
+    }
 
     def __init__(self, idf: Callable[[str], float] | None = None, cache_size: int = 8192):
         self.idf = idf or (lambda t: 1.0)
@@ -135,7 +149,7 @@ class InteractionReranker:
         if intent_hint == "auto":
             causal = bool(_CAUSAL.search(query))
             change = bool(_CHANGE.search(query))
-        else:  # set by the query router
+        else:  # set by the query router ("exact"/"neutral" -> no kind preference)
             causal, change = intent_hint == "causal", intent_hint == "change"
         if causal and not change:
             intent = 1.0 if c.kind in {"commit", "failure"} else 0.0
@@ -159,7 +173,8 @@ class InteractionReranker:
         out = []
         for c in candidates:
             f = self.features(query, c, max_prior, intent)
-            out.append(sum(self.WEIGHTS[k] * v for k, v in f.items()))
+            weights = self.PROFILE_WEIGHTS.get(intent, self.WEIGHTS)
+            out.append(sum(weights[k] * v for k, v in f.items()))
         return out
 
 

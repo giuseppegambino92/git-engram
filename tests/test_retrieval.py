@@ -126,3 +126,62 @@ def test_slot_budget_defers_instead_of_dropping(shopfront):
     assert sorted(out) == sorted(order)
     assert sum(r.meta[d].kind == "commit" for d in out[:5]) == 1
     assert out[:5] == [commits[0], *code] and out[5:] == commits[1:]
+
+
+def test_graveyard_anchors_on_symbols_not_files(shopfront):
+    e = shopfront.engine
+    f1 = shopfront.failure_ids["F1-clock-skew"]  # targets token.py::is_token_expired
+    resp = e.search("how does issue_token build and sign the session payload", top_k=8)
+    assert f1 not in {w.failure_id for w in resp.warnings}  # sibling function in the same file
+    assert all("targets retrieved file" not in w.match_reason for w in resp.warnings)
+    # The failing function itself still triggers the warning through the retrieved symbol.
+    resp = e.search("simplify is_token_expired by removing CLOCK_SKEW_SECONDS", top_k=8)
+    assert f1 in {w.failure_id for w in resp.warnings}
+
+
+def test_module_level_failures_fall_back_to_file_anchoring(shopfront):
+    e = shopfront.engine
+    f11 = shopfront.failure_ids["F11-ttl-mismatch"]  # diff sits on a module-level constant
+    assert ("backend/inventory/reservations.py", "<module>") in e.graveyard.targets_of(f11)
+    resp = e.search("change RESERVATION_TTL_SECONDS in the inventory reservations module", top_k=8)
+    reasons = {w.failure_id: w.match_reason for w in resp.warnings}
+    assert f11 in reasons
+
+
+def test_bulk_commits_contribute_no_context(shopfront):
+    from git_engram.models import Hit
+
+    e = shopfront.engine
+    bootstrap = shopfront.info.commit_by_prefix("feat: bootstrap shopfront")
+    hit = Hit(
+        doc_id=0,
+        doc_key=f"commit:{bootstrap}",
+        kind="commit",
+        path=None,
+        symbol=None,
+        title="",
+        snippet="",
+        ts=None,
+        score=0.0,
+    )
+    assert e._retrieved_context([hit], 3) == (set(), set())
+    focused = shopfront.info.commit_by_prefix("fix(auth): tolerate 30s clock skew")
+    hit.doc_key = f"commit:{focused}"
+    symbols, _ = e._retrieved_context([hit], 3)
+    assert ("backend/auth/token.py", "is_token_expired") in symbols
+
+
+def test_preflight_sibling_vs_file_level(shopfront):
+    e = shopfront.engine
+    f1 = shopfront.failure_ids["F1-clock-skew"]
+    sibling = e.preflight("backend/auth/token.py", "issue_token")
+    assert f1 not in {w.failure_id for w in sibling.warnings}
+    whole_file = e.preflight("backend/auth/token.py")
+    assert f1 in {w.failure_id for w in whole_file.warnings}
+
+
+def test_mmr_is_opt_in():
+    from git_engram.config import RetrievalConfig
+    from git_engram.retrieval.engine import FULL
+
+    assert FULL.diversify is False and RetrievalConfig().mmr is False

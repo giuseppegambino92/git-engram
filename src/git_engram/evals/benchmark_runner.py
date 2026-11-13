@@ -43,7 +43,7 @@ from dataclasses import replace
 
 from ..retrieval.engine import BM25_ONLY, DENSE_F32, FULL, HYBRID, RetrievalMode
 from ..security.sanitizer import ContextFirewall
-from .dataset import DEV_QUERIES, TEST_QUERIES, TEST_V1_QUERIES, TEST_V2_QUERIES, EvalQuery
+from .dataset import DEV_QUERIES, TEST_QUERIES, TEST_V1_QUERIES, TEST_V2_QUERIES, TEST_V3_QUERIES, EvalQuery
 from .fixture import build_shopfront, populate_memory
 from .metrics import RankedDoc, first_ranks, ndcg_at, percentile, recall_at, reciprocal_rank
 
@@ -56,14 +56,38 @@ CONFIGS: list[tuple[str, RetrievalMode]] = [
 
 ABLATIONS: list[tuple[str, RetrievalMode]] = [
     ("git-engram (full)", FULL),
+    ("- commit slot budget (unconstrained top-k)", replace(FULL, name="no-slots", slot_budget=False)),
+    ("- query-adaptive router (fixed weights)", replace(FULL, name="no-router", route=False)),
+    ("- exact-identifier rerank profile", replace(FULL, name="no-exact-profile")),
+    ("file-level graveyard anchoring (legacy)", replace(FULL, name="file-anchor")),
+    ("+ MMR file diversity (opt-in)", replace(FULL, name="mmr", diversify=True)),
     ("- co-change graph path", replace(FULL, name="no-graph", graph=False)),
     ("- interaction reranker", replace(FULL, name="no-rerank", rerank=False)),
-    ("- MMR file diversity", replace(FULL, name="no-diversity", diversify=False)),
     ("- time decay (plain RRF)", replace(FULL, name="no-td", time_decay=False)),
     ("float32 exact instead of 1-bit+int8", replace(FULL, name="f32", vector="float32")),
-    ("- query-adaptive router (fixed weights)", replace(FULL, name="no-router", route=False)),
-    ("- commit slot budget (unconstrained top-k)", replace(FULL, name="no-slots", slot_budget=False)),
 ]
+
+# Configuration (not RetrievalMode) changes needed by some ablation rows, keyed by mode name.
+ABLATION_OVERRIDES: dict[str, dict[str, object]] = {
+    "file-anchor": {"graveyard.anchor": "file"},
+    "no-exact-profile": {"router.exact_intent": "neutral"},
+}
+
+
+def _apply_overrides(engine: Engram, overrides: dict[str, object]) -> dict[str, object]:
+    from ..retrieval import router
+
+    previous: dict[str, object] = {}
+    for key, value in overrides.items():
+        if key == "router.exact_intent":
+            previous[key] = router.RERANK_INTENT["exact"]
+            router.RERANK_INTENT["exact"] = value
+            continue
+        section, attr = key.split(".", 1)
+        target = getattr(engine.cfg, section)
+        previous[key] = getattr(target, attr)
+        setattr(target, attr, value)
+    return previous
 
 
 @dataclass
@@ -126,6 +150,7 @@ def evaluate(
     retriever = engine.retriever
 
     for name, mode in configs or CONFIGS:
+        restore = _apply_overrides(engine, ABLATION_OVERRIDES.get(mode.name, {}))
         res = ConfigResult(name)
         cats: dict[str, list[dict]] = defaultdict(list)
         latencies: list[float] = []
@@ -185,6 +210,7 @@ def evaluate(
         res.p50_ms = percentile(latencies, 50)
         res.p95_ms = percentile(latencies, 95)
         results.append(res)
+        _apply_overrides(engine, restore)
     return results
 
 
@@ -363,7 +389,7 @@ def render_markdown(
     ablations: list[tuple[ConfigResult, ConfigResult]] | None = None,
     preflight: dict | None = None,
     dev_results: list[ConfigResult] | None = None,
-    v1_results: list[ConfigResult] | None = None,
+    retired: list[tuple[str, str, list[ConfigResult]]] | None = None,
 ) -> str:
     routes = meta.get("router_classes", {})
     lines = [
@@ -373,30 +399,21 @@ def render_markdown(
         f"{meta['documents']} indexed documents, {meta['failures']} graveyard failures. Hardware: {meta['machine']}, "
         f"Python {meta['python']}. Latency = warm, single-thread wall time per query over {meta['repeats']} repeats.",
         "",
-        f"### Held-out test split v2 ({len(TEST_V2_QUERIES)} unseen queries: 6 causal, 6 regression, "
+        f"### Held-out test split v3 ({len(TEST_V3_QUERIES)} unseen queries: 6 causal, 6 regression, "
         "6 coupled-file, 6 exact-identifier)",
         "",
-        "Committed (with a fixture extension) before the commit slot-budget fix existed; never used to choose any "
-        "weight or threshold. Half of it targets facts no other split mentions.",
+        "Committed (with an inventory fixture extension) before symbol-level graveyard anchoring, the MMR removal and "
+        "exact-route tuning existed; never used to choose any weight or threshold. Includes sibling-symbol queries "
+        "that measure graveyard false alarms.",
         "",
         *_main_table(results),
         "",
         *_category_table(results),
     ]
     if routes:
-        lines += ["", "Router classes on the v2 split: " + ", ".join(f"{k} {v}" for k, v in sorted(routes.items()))]
-    if v1_results:
-        lines += [
-            "",
-            f"### Retired held-out split v1 ({len(TEST_V1_QUERIES)} queries)",
-            "",
-            "Unseen when first reported; its per-query results were then used to diagnose commit-capsule crowding, "
-            "so it is no longer held-out. Shown for continuity only.",
-            "",
-            *_main_table(v1_results),
-            "",
-            *_category_table(v1_results),
-        ]
+        lines += ["", "Router classes on the v3 split: " + ", ".join(f"{k} {v}" for k, v in sorted(routes.items()))]
+    for title, note, rows in retired or []:
+        lines += ["", f"### {title}", "", note, "", *_main_table(rows), "", *_category_table(rows)]
     if dev_results:
         lines += [
             "",
@@ -413,13 +430,14 @@ def render_markdown(
             "",
             "### Ablation study (git-engram minus one component)",
             "",
-            "| Variant | nDCG@5 dev | nDCG@5 v2 | Recall@5 v2 | MRR v2 | Co-Change Disc. v2 | Neg. Warning Hit v2 |",
-            "|---|---:|---:|---:|---:|---:|---:|",
+            "| Variant | nDCG@5 dev | nDCG@5 v3 | Recall@5 v3 | MRR v3 | Co-Change v3 | Neg. Hit v3 "
+            "| False Alarms v3 |",
+            "|---|---:|---:|---:|---:|---:|---:|---:|",
         ]
         for dev, test in ablations:
             lines.append(
                 f"| {test.name} | {dev.ndcg5:.3f} | {test.ndcg5:.3f} | {test.recall5:.3f} | {test.mrr:.3f} | "
-                f"{test.cochange:.0%} | {test.neg_hit:.0%} |"
+                f"{test.cochange:.0%} | {test.neg_hit:.0%} | {test.false_alarm:.0%} |"
             )
     if preflight:
         lines += [
@@ -472,13 +490,14 @@ def run_benchmark(
         stats = engine.index()
         failure_ids = populate_memory(engine, info)
         build_s = time.perf_counter() - t0
-        results = evaluate(engine, info, failure_ids, repeats, queries=TEST_V2_QUERIES)
+        results = evaluate(engine, info, failure_ids, repeats, queries=TEST_V3_QUERIES)
         v1_results = evaluate(engine, info, failure_ids, 1, queries=TEST_V1_QUERIES)
+        v2_results = evaluate(engine, info, failure_ids, 1, queries=TEST_V2_QUERIES)
         dev_results = evaluate(engine, info, failure_ids, 1, queries=DEV_QUERIES)
         ablations = list(
             zip(
                 evaluate(engine, info, failure_ids, 1, ABLATIONS, queries=DEV_QUERIES),
-                evaluate(engine, info, failure_ids, 1, ABLATIONS, queries=TEST_V2_QUERIES),
+                evaluate(engine, info, failure_ids, 1, ABLATIONS, queries=TEST_V3_QUERIES),
                 strict=True,
             )
         )
@@ -486,7 +505,7 @@ def run_benchmark(
 
         from ..retrieval.router import classify
 
-        router_classes = dict(Counter(classify(_resolve_query(q, info)).klass for q in TEST_V2_QUERIES))
+        router_classes = dict(Counter(classify(_resolve_query(q, info)).klass for q in TEST_V3_QUERIES))
         preflight = preflight_benchmark(engine)
         scale_rows = scale_benchmark(engine, sizes) if scale else []
         sec = security_benchmark(engine.firewall)
@@ -502,12 +521,25 @@ def run_benchmark(
             "index_timings_ms": {k: round(v, 1) for k, v in stats.timings_ms.items()},
             "router_classes": router_classes,
         }
-        markdown = render_markdown(results, scale_rows, sec, meta, ablations, preflight, dev_results, v1_results)
+        retired = [
+            (
+                f"Retired held-out split v2 ({len(TEST_V2_QUERIES)} queries)",
+                "Unseen when first reported; its false alarms were then diagnosed, so it is no longer held-out.",
+                v2_results,
+            ),
+            (
+                f"Retired held-out split v1 ({len(TEST_V1_QUERIES)} queries)",
+                "Unseen when first reported; then used to diagnose commit-capsule crowding. Continuity only.",
+                v1_results,
+            ),
+        ]
+        markdown = render_markdown(results, scale_rows, sec, meta, ablations, preflight, dev_results, retired)
         payload = {
             "meta": meta,
             "results": [r.__dict__ for r in results],
             "results_dev": [r.__dict__ for r in dev_results],
             "results_v1_retired": [r.__dict__ for r in v1_results],
+            "results_v2_retired": [r.__dict__ for r in v2_results],
             "ablations": [
                 {
                     "name": t.name,
