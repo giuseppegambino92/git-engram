@@ -1,0 +1,2313 @@
+{
+  "meta": {
+    "commits": 37,
+    "files": 31,
+    "documents": 153,
+    "failures": 7,
+    "machine": "Darwin arm64",
+    "python": "3.14.10",
+    "repeats": 20,
+    "build_and_index_s": 2.85,
+    "index_timings_ms": {
+      "history": 113.3,
+      "ast": 28.0,
+      "timestamps": 0.5,
+      "blame": 85.2,
+      "cochange": 1.8,
+      "memory_docs": 0.1,
+      "embeddings": 182.7,
+      "firewall_lm": 10.6,
+      "total": 435.8
+    }
+  },
+  "results": [
+    {
+      "name": "Dense RAG (float32 cosine)",
+      "recall3": 0.5833333333333333,
+      "recall5": 0.703125,
+      "mrr": 0.764360119047619,
+      "ndcg5": 0.6289720521397812,
+      "neg_hit": 0.8666666666666667,
+      "false_alarm": 0.058823529411764705,
+      "cochange": 0.0,
+      "ram_kb": 229.5,
+      "p50_ms": 0.23099999816622585,
+      "p95_ms": 0.36668749817181373,
+      "per_category": {
+        "causal": {
+          "recall5": 0.8958333333333333,
+          "mrr": 0.8375,
+          "ndcg5": 0.6275796934855696
+        },
+        "regression": {
+          "recall5": 0.7708333333333333,
+          "mrr": 0.875,
+          "ndcg5": 0.7881430228361206
+        },
+        "coupled": {
+          "recall5": 0.3958333333333333,
+          "mrr": 0.5636904761904762,
+          "ndcg5": 0.36969125640772527
+        },
+        "error-code": {
+          "recall5": 0.75,
+          "mrr": 0.78125,
+          "ndcg5": 0.7304742358297092
+        }
+      },
+      "per_query": {
+        "why-01": {
+          "recall3": 0.5,
+          "recall5": 1.0,
+          "mrr": 1.0,
+          "ndcg5": 0.631251450669265,
+          "top5": [
+            "sym:backend/auth/token.py::is_token_expired",
+            "sym:tests/backend/test_token.py::<module>",
+            "sym:tests/backend/test_token.py::test_old_token_is_expired",
+            "commit:ac36176e15e00538947d2013394ff36faddf45e3",
+            "file:backend/auth/token.py"
+          ],
+          "warned": true
+        },
+        "why-02": {
+          "recall3": 1.0,
+          "recall5": 1.0,
+          "mrr": 1.0,
+          "ndcg5": 0.7967075809905066,
+          "top5": [
+            "sym:backend/payments/retry.py::charge_with_retry",
+            "commit:399d55665b24e09f92c9dc0340137c19fd1058c5",
+            "inv:INV-PAY-001",
+            "sym:backend/payments/gateway.py::GatewayClient.charge",
+            "file:backend/payments/retry.py"
+          ],
+          "warned": true
+        },
+        "why-03": {
+          "recall3": 0.6666666666666666,
+          "recall5": 0.6666666666666666,
+          "mrr": 1.0,
+          "ndcg5": 0.3631143808977028,
+          "top5": [
+            "commit:97215ead75c7c1b4a7eebe045a8f5d8ce7d600ca",
+            "file:backend/cache/lru.py",
+            "sym:backend/cache/lru.py::TTLCache.get",
+            "sym:backend/cache/lru.py::TTLCache.set",
+            "sym:backend/cache/lru.py::TTLCache.__init__"
+          ],
+          "warned": true
+        },
+        "why-04": {
+          "recall3": 1.0,
+          "recall5": 1.0,
+          "mrr": 1.0,
+          "ndcg5": 1.0,
+          "top5": [
+            "commit:5742386e7271608196dcd91ec7ef9bc8bedeb915",
+            "sym:backend/notifications/email.py::render_receipt",
+            "file:backend/notifications/email.py",
+            "commit:8a4cca1fcb375356bee101816f1483ac5603bc4c",
+            "commit:71012c7ff1ddedfd823ca6b3d7096c2e7d5d0648"
+          ],
+          "false_alarm": false
+        },
+        "why-05": {
+          "recall3": 0.0,
+          "recall5": 0.5,
+          "mrr": 0.2,
+          "ndcg5": 0.10654373218155079,
+          "top5": [
+            "sym:worker/pkg/queue/consumer.go::Consumer",
+            "file:worker/pkg/queue/consumer.go",
+            "sym:worker/pkg/queue/consumer.go::NewConsumer",
+            "sym:worker/pkg/queue/consumer.go::<module>",
+            "sym:worker/pkg/queue/consumer.go::Consumer.HandleOne"
+          ],
+          "warned": true
+        },
+        "why-06": {
+          "recall3": 1.0,
+          "recall5": 1.0,
+          "mrr": 1.0,
+          "ndcg5": 0.7967075809905066,
+          "top5": [
+            "sym:backend/utils/money.py::tax_cents",
+            "commit:4fcfc641c611fb50a3162996b405a49c71ef8f6f",
+            "inv:INV-MONEY-003",
+            "file:backend/utils/money.py",
+            "sym:backend/utils/money.py::<module>"
+          ],
+          "warned": true
+        },
+        "why-07": {
+          "recall3": 1.0,
+          "recall5": 1.0,
+          "mrr": 1.0,
+          "ndcg5": 0.7967075809905066,
+          "top5": [
+            "sym:web/src/components/CheckoutButton.tsx::CheckoutButton",
+            "commit:d35326cfaf6308b4079bdde9455991a6e189628e",
+            "file:web/src/components/CheckoutButton.tsx",
+            "sym:web/src/components/CheckoutButton.tsx::<module>",
+            "sym:backend/auth/token.py::is_token_expired"
+          ],
+          "false_alarm": false
+        },
+        "why-08": {
+          "recall3": 0.5,
+          "recall5": 1.0,
+          "mrr": 0.5,
+          "ndcg5": 0.5296052411645183,
+          "top5": [
+            "file:backend/auth/refresh.py",
+            "sym:backend/auth/refresh.py::refresh_session",
+            "sym:backend/auth/refresh.py::<module>",
+            "commit:f07f52ecfbaa7b6fd603d9ba6b5e5920ba847749",
+            "commit:66e0aa5b7556d917268b9aaff4df4683b280548f"
+          ],
+          "false_alarm": false
+        },
+        "bug-01": {
+          "recall3": 0.5,
+          "recall5": 0.5,
+          "mrr": 0.5,
+          "ndcg5": 0.52129602861432,
+          "top5": [
+            "sym:backend/utils/money.py::format_cents",
+            "commit:399d55665b24e09f92c9dc0340137c19fd1058c5",
+            "inv:INV-PAY-001",
+            "sym:backend/payments/gateway.py::user_message_for",
+            "file:backend/utils/money.py"
+          ],
+          "warned": false
+        },
+        "bug-02": {
+          "recall3": 0.5,
+          "recall5": 0.5,
+          "mrr": 0.5,
+          "ndcg5": 0.52129602861432,
+          "top5": [
+            "sym:tests/backend/test_token.py::test_token_within_clock_skew_is_valid",
+            "commit:ac36176e15e00538947d2013394ff36faddf45e3",
+            "sym:backend/auth/token.py::<module>",
+            "file:tests/backend/test_token.py",
+            "sym:backend/auth/token.py::issue_token"
+          ],
+          "warned": true
+        },
+        "bug-03": {
+          "recall3": 1.0,
+          "recall5": 1.0,
+          "mrr": 1.0,
+          "ndcg5": 1.0,
+          "top5": [
+            "commit:f126abd27cabb9f4ba46a4d17b82ee82cc8dc427",
+            "sym:backend/cache/lru.py::TTLCache.get",
+            "sym:backend/cache/lru.py::TTLCache",
+            "sym:backend/cache/lru.py::TTLCache.set",
+            "file:backend/cache/lru.py"
+          ],
+          "warned": true
+        },
+        "bug-04": {
+          "recall3": 0.5,
+          "recall5": 0.5,
+          "mrr": 1.0,
+          "ndcg5": 0.8262346571285599,
+          "top5": [
+            "commit:75e886d038f0834c93318376e92d3ef0fcb81490",
+            "file:worker/config/worker.yaml",
+            "commit:e41a6ff797006f7399b4ea857211cd8c70dde5c7",
+            "commit:ff753a53dd4e32402eb5a1bbe0a1ae1de9d4a957",
+            "sym:worker/pkg/queue/consumer.go::Message"
+          ],
+          "false_alarm": false
+        },
+        "bug-05": {
+          "recall3": 0.6666666666666666,
+          "recall5": 0.6666666666666666,
+          "mrr": 1.0,
+          "ndcg5": 0.878961873034099,
+          "top5": [
+            "commit:33e1cdc3abebc20439199a303d7af2a272f07f81",
+            "sym:backend/search/query_parser.py::extract_sku",
+            "sym:backend/catalog/products.py::get_product",
+            "sym:vendor/leftpad/leftpad.py::leftpad",
+            "file:backend/search/query_parser.py"
+          ],
+          "false_alarm": false
+        },
+        "bug-06": {
+          "recall3": 1.0,
+          "recall5": 1.0,
+          "mrr": 1.0,
+          "ndcg5": 0.7967075809905066,
+          "top5": [
+            "sym:backend/auth/refresh.py::refresh_session",
+            "commit:f07f52ecfbaa7b6fd603d9ba6b5e5920ba847749",
+            "file:backend/auth/refresh.py",
+            "sym:backend/auth/refresh.py::<module>",
+            "commit:66e0aa5b7556d917268b9aaff4df4683b280548f"
+          ],
+          "false_alarm": false
+        },
+        "bug-07": {
+          "recall3": 1.0,
+          "recall5": 1.0,
+          "mrr": 1.0,
+          "ndcg5": 0.7967075809905066,
+          "top5": [
+            "sym:backend/utils/money.py::tax_cents",
+            "commit:4fcfc641c611fb50a3162996b405a49c71ef8f6f",
+            "inv:INV-MONEY-003",
+            "sym:web/src/api/orderTypes.ts::Order",
+            "commit:b8fb2a57b266cddba53e1fe8b288b35f8aa1d918"
+          ],
+          "warned": true
+        },
+        "bug-08": {
+          "recall3": 1.0,
+          "recall5": 1.0,
+          "mrr": 1.0,
+          "ndcg5": 0.9639404333166532,
+          "top5": [
+            "commit:cf72a9ea577965757668921ac5ac1e41d3766af4",
+            "sym:worker/pkg/queue/consumer.go::Consumer",
+            "sym:worker/pkg/queue/consumer.go::Consumer.HandleOne",
+            "sym:worker/pkg/queue/consumer.go::<module>",
+            "file:worker/pkg/queue/consumer.go"
+          ],
+          "warned": true
+        },
+        "cpl-01": {
+          "recall3": 0.3333333333333333,
+          "recall5": 0.3333333333333333,
+          "mrr": 1.0,
+          "ndcg5": 0.5562983930884396,
+          "top5": [
+            "sym:backend/api/schemas.py::OrderSchema",
+            "commit:844332cce41f9a4399935a72c652ea21778b1a51",
+            "file:backend/api/schemas.py",
+            "inv:INV-API-002",
+            "sym:backend/api/schemas.py::OrderSchema.to_json"
+          ],
+          "false_alarm": false,
+          "coupled_found": false
+        },
+        "cpl-02": {
+          "recall3": 0.3333333333333333,
+          "recall5": 0.3333333333333333,
+          "mrr": 1.0,
+          "ndcg5": 0.5562983930884396,
+          "top5": [
+            "sym:backend/api/schemas.py::OrderSchema",
+            "sym:backend/api/schemas.py::OrderSchema.to_json",
+            "file:backend/api/schemas.py",
+            "commit:50236e8cf8b6981350c91c67a36076e3d00c89ca",
+            "inv:INV-API-002"
+          ],
+          "false_alarm": false,
+          "coupled_found": false
+        },
+        "cpl-03": {
+          "recall3": 0.0,
+          "recall5": 0.0,
+          "mrr": 0.14285714285714285,
+          "ndcg5": 0.0,
+          "top5": [
+            "sym:backend/payments/retry.py::<module>",
+            "commit:5345de6c06ee3381404ce66f33e3e8af14238d30",
+            "commit:6942911ad455f91047a00458c5be229e3fd5a238",
+            "sym:backend/payments/gateway.py::GatewayTimeout",
+            "sym:backend/payments/gateway.py::GatewayClient.__init__"
+          ],
+          "false_alarm": false,
+          "coupled_found": false
+        },
+        "cpl-04": {
+          "recall3": 0.5,
+          "recall5": 0.5,
+          "mrr": 0.3333333333333333,
+          "ndcg5": 0.3065735963827292,
+          "top5": [
+            "sym:backend/cart/service.py::CartService",
+            "file:backend/cart/service.py",
+            "sym:backend/cart/service.py::CartService.checkout",
+            "sym:backend/cart/service.py::CartService.__init__",
+            "commit:3f8938a77b89ad327cfdd7bba251c0e793de8c19"
+          ],
+          "false_alarm": false,
+          "coupled_found": false
+        },
+        "cpl-05": {
+          "recall3": 0.0,
+          "recall5": 0.5,
+          "mrr": 0.2,
+          "ndcg5": 0.23719771276929622,
+          "top5": [
+            "commit:e41a6ff797006f7399b4ea857211cd8c70dde5c7",
+            "file:worker/pkg/queue/backoff.go",
+            "commit:75e886d038f0834c93318376e92d3ef0fcb81490",
+            "sym:worker/pkg/queue/backoff.go::<module>",
+            "sym:worker/pkg/queue/backoff.go::Backoff"
+          ],
+          "false_alarm": false,
+          "coupled_found": false
+        },
+        "cpl-06": {
+          "recall3": 0.5,
+          "recall5": 0.5,
+          "mrr": 0.5,
+          "ndcg5": 0.3868528072345416,
+          "top5": [
+            "commit:71012c7ff1ddedfd823ca6b3d7096c2e7d5d0648",
+            "sym:backend/notifications/email.py::render_receipt",
+            "file:backend/notifications/email.py",
+            "commit:8a4cca1fcb375356bee101816f1483ac5603bc4c",
+            "commit:5742386e7271608196dcd91ec7ef9bc8bedeb915"
+          ],
+          "false_alarm": false,
+          "coupled_found": false
+        },
+        "cpl-07": {
+          "recall3": 0.3333333333333333,
+          "recall5": 0.6666666666666666,
+          "mrr": 1.0,
+          "ndcg5": 0.6361599521541359,
+          "top5": [
+            "file:backend/db/schema.sql",
+            "commit:50236e8cf8b6981350c91c67a36076e3d00c89ca",
+            "sym:backend/api/schemas.py::OrderSchema.to_json",
+            "sym:backend/api/schemas.py::OrderSchema",
+            "commit:62e3c93ff8b3cf8569793550c88a1ec553d976f8"
+          ],
+          "false_alarm": false,
+          "coupled_found": false
+        },
+        "cpl-08": {
+          "recall3": 0.3333333333333333,
+          "recall5": 0.3333333333333333,
+          "mrr": 0.3333333333333333,
+          "ndcg5": 0.2781491965442198,
+          "top5": [
+            "file:mobile/src/parsers/orderParser.ts",
+            "commit:8178032ca3e79126a47170b17b1fda3d2c0d68bc",
+            "sym:mobile/src/parsers/orderParser.ts::parseOrder",
+            "commit:844332cce41f9a4399935a72c652ea21778b1a51",
+            "sym:mobile/src/parsers/orderParser.ts::MobileOrder"
+          ],
+          "warned": true,
+          "coupled_found": false
+        },
+        "err-01": {
+          "recall3": 1.0,
+          "recall5": 1.0,
+          "mrr": 1.0,
+          "ndcg5": 1.0,
+          "top5": [
+            "sym:backend/cart/service.py::CartStaleError",
+            "commit:3f8938a77b89ad327cfdd7bba251c0e793de8c19",
+            "sym:web/src/api/cartClient.ts::checkoutCart",
+            "file:backend/cart/service.py",
+            "sym:backend/cart/service.py::CartService.checkout"
+          ],
+          "false_alarm": false
+        },
+        "err-02": {
+          "recall3": 1.0,
+          "recall5": 1.0,
+          "mrr": 1.0,
+          "ndcg5": 0.9197207891481876,
+          "top5": [
+            "commit:f1c216a1105b6c658ca87883c00df2009579b86b",
+            "sym:backend/payments/gateway.py::<module>",
+            "sym:backend/payments/gateway.py::user_message_for",
+            "commit:ac36176e15e00538947d2013394ff36faddf45e3",
+            "sym:backend/auth/token.py::<module>"
+          ],
+          "false_alarm": false
+        },
+        "err-03": {
+          "recall3": 0.5,
+          "recall5": 0.5,
+          "mrr": 1.0,
+          "ndcg5": 0.8262346571285599,
+          "top5": [
+            "commit:ac36176e15e00538947d2013394ff36faddf45e3",
+            "sym:backend/auth/token.py::<module>",
+            "commit:f1c216a1105b6c658ca87883c00df2009579b86b",
+            "sym:backend/payments/gateway.py::<module>",
+            "inv:INV-PAY-001"
+          ],
+          "false_alarm": false
+        },
+        "err-04": {
+          "recall3": 0.5,
+          "recall5": 0.5,
+          "mrr": 0.5,
+          "ndcg5": 0.3868528072345416,
+          "top5": [
+            "sym:backend/payments/gateway.py::GatewayClient.charge",
+            "commit:399d55665b24e09f92c9dc0340137c19fd1058c5",
+            "inv:INV-PAY-001",
+            "sym:backend/payments/gateway.py::GatewayTimeout",
+            "sym:web/src/api/cartClient.ts::checkoutCart"
+          ],
+          "warned": true
+        },
+        "err-05": {
+          "recall3": 0.5,
+          "recall5": 0.5,
+          "mrr": 1.0,
+          "ndcg5": 0.8262346571285599,
+          "top5": [
+            "commit:5742386e7271608196dcd91ec7ef9bc8bedeb915",
+            "commit:f07f52ecfbaa7b6fd603d9ba6b5e5920ba847749",
+            "sym:backend/auth/refresh.py::refresh_session",
+            "inv:INV-API-002",
+            "inv:INV-MONEY-003"
+          ],
+          "false_alarm": true
+        },
+        "err-06": {
+          "recall3": 0.0,
+          "recall5": 1.0,
+          "mrr": 0.25,
+          "ndcg5": 0.4306765580733931,
+          "top5": [
+            "sym:backend/cart/service.py::CartService",
+            "file:backend/cart/service.py",
+            "sym:backend/cart/service.py::CartService.__init__",
+            "sym:backend/cart/service.py::CartService.checkout",
+            "sym:backend/cart/service.py::<module>"
+          ],
+          "warned": true
+        },
+        "err-07": {
+          "recall3": 0.5,
+          "recall5": 1.0,
+          "mrr": 1.0,
+          "ndcg5": 0.9327783893101107,
+          "top5": [
+            "sym:worker/pkg/queue/consumer.go::Consumer.HandleOne",
+            "file:worker/pkg/queue/consumer.go",
+            "sym:worker/pkg/queue/consumer.go::<module>",
+            "sym:worker/pkg/queue/consumer.go::Consumer",
+            "commit:cf72a9ea577965757668921ac5ac1e41d3766af4"
+          ],
+          "warned": true
+        },
+        "err-08": {
+          "recall3": 0.5,
+          "recall5": 0.5,
+          "mrr": 0.5,
+          "ndcg5": 0.52129602861432,
+          "top5": [
+            "file:vendor/leftpad/README.md",
+            "commit:f126abd27cabb9f4ba46a4d17b82ee82cc8dc427",
+            "commit:ff4c2de425699b7f9b1a59889e638179698148b7",
+            "sym:web/src/api/cartClient.ts::checkoutCart",
+            "commit:3f8938a77b89ad327cfdd7bba251c0e793de8c19"
+          ],
+          "warned": false
+        }
+      }
+    },
+    {
+      "name": "BM25 only (SQLite FTS5)",
+      "recall3": 0.6510416666666666,
+      "recall5": 0.734375,
+      "mrr": 0.8854166666666667,
+      "ndcg5": 0.7392793775280426,
+      "neg_hit": 0.6666666666666666,
+      "false_alarm": 0.0,
+      "cochange": 0.0,
+      "ram_kb": 46.9892578125,
+      "p50_ms": 0.31308300094679,
+      "p95_ms": 0.48905654402915366,
+      "per_category": {
+        "causal": {
+          "recall5": 1.0,
+          "mrr": 1.0,
+          "ndcg5": 0.8117352950260981
+        },
+        "regression": {
+          "recall5": 0.7708333333333333,
+          "mrr": 1.0,
+          "ndcg5": 0.9073436561821371
+        },
+        "coupled": {
+          "recall5": 0.41666666666666663,
+          "mrr": 0.6666666666666666,
+          "ndcg5": 0.434890196927216
+        },
+        "error-code": {
+          "recall5": 0.75,
+          "mrr": 0.875,
+          "ndcg5": 0.8031483619767193
+        }
+      },
+      "per_query": {
+        "why-01": {
+          "recall3": 1.0,
+          "recall5": 1.0,
+          "mrr": 1.0,
+          "ndcg5": 0.7967075809905066,
+          "top5": [
+            "sym:backend/auth/token.py::is_token_expired",
+            "commit:ac36176e15e00538947d2013394ff36faddf45e3",
+            "sym:tests/backend/test_token.py::test_old_token_is_expired",
+            "file:backend/auth/token.py",
+            "sym:tests/backend/test_token.py::<module>"
+          ],
+          "warned": true
+        },
+        "why-02": {
+          "recall3": 1.0,
+          "recall5": 1.0,
+          "mrr": 1.0,
+          "ndcg5": 0.6885288809404666,
+          "top5": [
+            "sym:backend/payments/retry.py::charge_with_retry",
+            "inv:INV-PAY-001",
+            "commit:399d55665b24e09f92c9dc0340137c19fd1058c5",
+            "file:backend/payments/retry.py",
+            "sym:backend/payments/gateway.py::GatewayClient.charge"
+          ],
+          "warned": true
+        },
+        "why-03": {
+          "recall3": 0.6666666666666666,
+          "recall5": 1.0,
+          "mrr": 1.0,
+          "ndcg5": 0.7939234660462212,
+          "top5": [
+            "commit:97215ead75c7c1b4a7eebe045a8f5d8ce7d600ca",
+            "commit:f126abd27cabb9f4ba46a4d17b82ee82cc8dc427",
+            "sym:backend/cache/lru.py::TTLCache.__init__",
+            "sym:backend/cache/lru.py::TTLCache.set",
+            "sym:backend/cache/lru.py::TTLCache.get"
+          ],
+          "warned": true
+        },
+        "why-04": {
+          "recall3": 1.0,
+          "recall5": 1.0,
+          "mrr": 1.0,
+          "ndcg5": 1.0,
+          "top5": [
+            "commit:5742386e7271608196dcd91ec7ef9bc8bedeb915",
+            "sym:backend/notifications/email.py::render_receipt",
+            "commit:8a4cca1fcb375356bee101816f1483ac5603bc4c",
+            "file:backend/notifications/email.py",
+            "commit:71012c7ff1ddedfd823ca6b3d7096c2e7d5d0648"
+          ],
+          "false_alarm": false
+        },
+        "why-05": {
+          "recall3": 0.5,
+          "recall5": 1.0,
+          "mrr": 1.0,
+          "ndcg5": 0.9327783893101107,
+          "top5": [
+            "commit:cf72a9ea577965757668921ac5ac1e41d3766af4",
+            "sym:worker/pkg/queue/consumer.go::Consumer",
+            "sym:worker/pkg/queue/consumer.go::<module>",
+            "sym:worker/pkg/queue/consumer.go::NewConsumer",
+            "sym:worker/pkg/queue/consumer.go::Consumer.HandleOne"
+          ],
+          "warned": false
+        },
+        "why-06": {
+          "recall3": 1.0,
+          "recall5": 1.0,
+          "mrr": 1.0,
+          "ndcg5": 0.7967075809905066,
+          "top5": [
+            "sym:backend/utils/money.py::tax_cents",
+            "commit:4fcfc641c611fb50a3162996b405a49c71ef8f6f",
+            "inv:INV-MONEY-003",
+            "sym:backend/utils/money.py::<module>",
+            "file:backend/utils/money.py"
+          ],
+          "warned": true
+        },
+        "why-07": {
+          "recall3": 1.0,
+          "recall5": 1.0,
+          "mrr": 1.0,
+          "ndcg5": 0.7967075809905066,
+          "top5": [
+            "sym:web/src/components/CheckoutButton.tsx::CheckoutButton",
+            "commit:d35326cfaf6308b4079bdde9455991a6e189628e",
+            "file:web/src/components/CheckoutButton.tsx",
+            "sym:web/src/components/CheckoutButton.tsx::<module>",
+            "inv:INV-PAY-001"
+          ],
+          "false_alarm": false
+        },
+        "why-08": {
+          "recall3": 1.0,
+          "recall5": 1.0,
+          "mrr": 1.0,
+          "ndcg5": 0.6885288809404666,
+          "top5": [
+            "sym:backend/auth/refresh.py::refresh_session",
+            "file:backend/auth/refresh.py",
+            "commit:f07f52ecfbaa7b6fd603d9ba6b5e5920ba847749",
+            "sym:backend/auth/refresh.py::<module>",
+            "commit:66e0aa5b7556d917268b9aaff4df4683b280548f"
+          ],
+          "false_alarm": false
+        },
+        "bug-01": {
+          "recall3": 0.5,
+          "recall5": 0.5,
+          "mrr": 1.0,
+          "ndcg5": 0.8262346571285599,
+          "top5": [
+            "commit:399d55665b24e09f92c9dc0340137c19fd1058c5",
+            "sym:backend/payments/gateway.py::user_message_for",
+            "commit:f1c216a1105b6c658ca87883c00df2009579b86b",
+            "sym:backend/payments/retry.py::<module>",
+            "commit:5742386e7271608196dcd91ec7ef9bc8bedeb915"
+          ],
+          "warned": false
+        },
+        "bug-02": {
+          "recall3": 0.5,
+          "recall5": 0.5,
+          "mrr": 1.0,
+          "ndcg5": 0.8262346571285599,
+          "top5": [
+            "commit:ac36176e15e00538947d2013394ff36faddf45e3",
+            "sym:backend/auth/token.py::sign_payload",
+            "sym:tests/backend/test_token.py::test_token_within_clock_skew_is_valid",
+            "sym:backend/auth/token.py::issue_token",
+            "file:backend/auth/token.py"
+          ],
+          "warned": true
+        },
+        "bug-03": {
+          "recall3": 1.0,
+          "recall5": 1.0,
+          "mrr": 1.0,
+          "ndcg5": 1.0,
+          "top5": [
+            "commit:f126abd27cabb9f4ba46a4d17b82ee82cc8dc427",
+            "sym:backend/cache/lru.py::TTLCache.get",
+            "sym:backend/cache/lru.py::TTLCache",
+            "commit:97215ead75c7c1b4a7eebe045a8f5d8ce7d600ca",
+            "sym:backend/cache/lru.py::TTLCache.set"
+          ],
+          "warned": true
+        },
+        "bug-04": {
+          "recall3": 0.5,
+          "recall5": 0.5,
+          "mrr": 1.0,
+          "ndcg5": 0.8262346571285599,
+          "top5": [
+            "commit:75e886d038f0834c93318376e92d3ef0fcb81490",
+            "commit:e41a6ff797006f7399b4ea857211cd8c70dde5c7",
+            "sym:worker/pkg/queue/consumer.go::Broker",
+            "commit:ff753a53dd4e32402eb5a1bbe0a1ae1de9d4a957",
+            "file:worker/pkg/queue/consumer.go"
+          ],
+          "false_alarm": false
+        },
+        "bug-05": {
+          "recall3": 0.6666666666666666,
+          "recall5": 0.6666666666666666,
+          "mrr": 1.0,
+          "ndcg5": 0.8472668887613066,
+          "top5": [
+            "commit:33e1cdc3abebc20439199a303d7af2a272f07f81",
+            "sym:backend/catalog/products.py::get_product",
+            "sym:backend/search/query_parser.py::extract_sku",
+            "sym:web/src/pages/Home.tsx::Home",
+            "file:backend/search/query_parser.py"
+          ],
+          "false_alarm": false
+        },
+        "bug-06": {
+          "recall3": 1.0,
+          "recall5": 1.0,
+          "mrr": 1.0,
+          "ndcg5": 1.0,
+          "top5": [
+            "commit:f07f52ecfbaa7b6fd603d9ba6b5e5920ba847749",
+            "sym:backend/auth/refresh.py::refresh_session",
+            "file:backend/auth/refresh.py",
+            "sym:backend/auth/refresh.py::<module>",
+            "commit:66e0aa5b7556d917268b9aaff4df4683b280548f"
+          ],
+          "false_alarm": false
+        },
+        "bug-07": {
+          "recall3": 1.0,
+          "recall5": 1.0,
+          "mrr": 1.0,
+          "ndcg5": 1.0,
+          "top5": [
+            "commit:4fcfc641c611fb50a3162996b405a49c71ef8f6f",
+            "sym:backend/utils/money.py::tax_cents",
+            "inv:INV-MONEY-003",
+            "commit:b8fb2a57b266cddba53e1fe8b288b35f8aa1d918",
+            "commit:71012c7ff1ddedfd823ca6b3d7096c2e7d5d0648"
+          ],
+          "warned": false
+        },
+        "bug-08": {
+          "recall3": 0.5,
+          "recall5": 1.0,
+          "mrr": 1.0,
+          "ndcg5": 0.9327783893101107,
+          "top5": [
+            "commit:cf72a9ea577965757668921ac5ac1e41d3766af4",
+            "sym:worker/pkg/queue/consumer.go::Consumer",
+            "sym:worker/pkg/queue/consumer.go::<module>",
+            "sym:worker/pkg/queue/consumer.go::NewConsumer",
+            "sym:worker/pkg/queue/consumer.go::Consumer.HandleOne"
+          ],
+          "warned": false
+        },
+        "cpl-01": {
+          "recall3": 0.0,
+          "recall5": 0.3333333333333333,
+          "mrr": 0.25,
+          "ndcg5": 0.23958467719708867,
+          "top5": [
+            "commit:844332cce41f9a4399935a72c652ea21778b1a51",
+            "commit:50236e8cf8b6981350c91c67a36076e3d00c89ca",
+            "commit:2907810cff94c20b88e7fdf341ae7f196064950a",
+            "sym:backend/api/schemas.py::OrderSchema",
+            "sym:backend/api/schemas.py::UserSchema"
+          ],
+          "false_alarm": false,
+          "coupled_found": false
+        },
+        "cpl-02": {
+          "recall3": 0.3333333333333333,
+          "recall5": 0.3333333333333333,
+          "mrr": 1.0,
+          "ndcg5": 0.5562983930884396,
+          "top5": [
+            "sym:backend/api/schemas.py::OrderSchema",
+            "commit:50236e8cf8b6981350c91c67a36076e3d00c89ca",
+            "sym:backend/api/schemas.py::OrderSchema.to_json",
+            "file:backend/api/schemas.py",
+            "file:backend/db/schema.sql"
+          ],
+          "false_alarm": false,
+          "coupled_found": false
+        },
+        "cpl-03": {
+          "recall3": 0.5,
+          "recall5": 0.5,
+          "mrr": 0.3333333333333333,
+          "ndcg5": 0.3065735963827292,
+          "top5": [
+            "commit:5345de6c06ee3381404ce66f33e3e8af14238d30",
+            "commit:6942911ad455f91047a00458c5be229e3fd5a238",
+            "sym:backend/config/settings.py::<module>",
+            "file:backend/config/settings.py",
+            "sym:backend/payments/retry.py::<module>"
+          ],
+          "false_alarm": false,
+          "coupled_found": false
+        },
+        "cpl-04": {
+          "recall3": 0.5,
+          "recall5": 0.5,
+          "mrr": 1.0,
+          "ndcg5": 0.6131471927654584,
+          "top5": [
+            "sym:backend/cart/service.py::CartService.checkout",
+            "sym:backend/cart/service.py::CartService",
+            "file:backend/cart/service.py",
+            "commit:3f8938a77b89ad327cfdd7bba251c0e793de8c19",
+            "sym:backend/cart/service.py::CartService.add_item"
+          ],
+          "false_alarm": false,
+          "coupled_found": false
+        },
+        "cpl-05": {
+          "recall3": 0.0,
+          "recall5": 0.5,
+          "mrr": 0.25,
+          "ndcg5": 0.26406812257259094,
+          "top5": [
+            "commit:e41a6ff797006f7399b4ea857211cd8c70dde5c7",
+            "sym:worker/pkg/queue/backoff.go::<module>",
+            "commit:75e886d038f0834c93318376e92d3ef0fcb81490",
+            "sym:worker/pkg/queue/backoff.go::Backoff",
+            "file:worker/pkg/queue/backoff.go"
+          ],
+          "false_alarm": false,
+          "coupled_found": false
+        },
+        "cpl-06": {
+          "recall3": 0.5,
+          "recall5": 0.5,
+          "mrr": 0.5,
+          "ndcg5": 0.3868528072345416,
+          "top5": [
+            "commit:71012c7ff1ddedfd823ca6b3d7096c2e7d5d0648",
+            "sym:backend/notifications/email.py::render_receipt",
+            "file:backend/notifications/email.py",
+            "commit:5742386e7271608196dcd91ec7ef9bc8bedeb915",
+            "commit:8a4cca1fcb375356bee101816f1483ac5603bc4c"
+          ],
+          "false_alarm": false,
+          "coupled_found": false
+        },
+        "cpl-07": {
+          "recall3": 0.3333333333333333,
+          "recall5": 0.3333333333333333,
+          "mrr": 1.0,
+          "ndcg5": 0.5562983930884396,
+          "top5": [
+            "file:backend/db/schema.sql",
+            "commit:50236e8cf8b6981350c91c67a36076e3d00c89ca",
+            "commit:62e3c93ff8b3cf8569793550c88a1ec553d976f8",
+            "commit:ece3c154e1d4e206d1913c0a310c78e22d4bbfbc",
+            "commit:844332cce41f9a4399935a72c652ea21778b1a51"
+          ],
+          "false_alarm": false,
+          "coupled_found": false
+        },
+        "cpl-08": {
+          "recall3": 0.3333333333333333,
+          "recall5": 0.3333333333333333,
+          "mrr": 1.0,
+          "ndcg5": 0.5562983930884396,
+          "top5": [
+            "sym:mobile/src/parsers/orderParser.ts::parseOrder",
+            "commit:8178032ca3e79126a47170b17b1fda3d2c0d68bc",
+            "file:mobile/src/parsers/orderParser.ts",
+            "commit:e100c8e4abad98172919c03ec404a3a7de136050",
+            "commit:844332cce41f9a4399935a72c652ea21778b1a51"
+          ],
+          "warned": true,
+          "coupled_found": false
+        },
+        "err-01": {
+          "recall3": 1.0,
+          "recall5": 1.0,
+          "mrr": 1.0,
+          "ndcg5": 1.0,
+          "top5": [
+            "sym:backend/cart/service.py::CartStaleError",
+            "commit:3f8938a77b89ad327cfdd7bba251c0e793de8c19",
+            "sym:web/src/api/cartClient.ts::checkoutCart",
+            "file:backend/cart/service.py",
+            "sym:backend/cart/service.py::CartService.checkout"
+          ],
+          "false_alarm": false
+        },
+        "err-02": {
+          "recall3": 1.0,
+          "recall5": 1.0,
+          "mrr": 1.0,
+          "ndcg5": 0.9197207891481876,
+          "top5": [
+            "commit:f1c216a1105b6c658ca87883c00df2009579b86b",
+            "sym:backend/payments/gateway.py::<module>",
+            "sym:backend/payments/gateway.py::user_message_for"
+          ],
+          "false_alarm": false
+        },
+        "err-03": {
+          "recall3": 0.5,
+          "recall5": 0.5,
+          "mrr": 1.0,
+          "ndcg5": 0.8262346571285599,
+          "top5": [
+            "commit:ac36176e15e00538947d2013394ff36faddf45e3",
+            "sym:backend/auth/token.py::<module>",
+            "commit:6942911ad455f91047a00458c5be229e3fd5a238",
+            "commit:399d55665b24e09f92c9dc0340137c19fd1058c5",
+            "commit:4fcfc641c611fb50a3162996b405a49c71ef8f6f"
+          ],
+          "false_alarm": false
+        },
+        "err-04": {
+          "recall3": 0.5,
+          "recall5": 0.5,
+          "mrr": 0.5,
+          "ndcg5": 0.3868528072345416,
+          "top5": [
+            "sym:backend/payments/gateway.py::GatewayClient.charge",
+            "commit:399d55665b24e09f92c9dc0340137c19fd1058c5",
+            "commit:6942911ad455f91047a00458c5be229e3fd5a238",
+            "sym:backend/payments/gateway.py::GatewayTimeout",
+            "sym:backend/catalog/products.py::get_product"
+          ],
+          "warned": true
+        },
+        "err-05": {
+          "recall3": 0.5,
+          "recall5": 0.5,
+          "mrr": 1.0,
+          "ndcg5": 0.8262346571285599,
+          "top5": [
+            "commit:5742386e7271608196dcd91ec7ef9bc8bedeb915",
+            "commit:f07f52ecfbaa7b6fd603d9ba6b5e5920ba847749",
+            "sym:backend/auth/refresh.py::refresh_session"
+          ],
+          "false_alarm": false
+        },
+        "err-06": {
+          "recall3": 1.0,
+          "recall5": 1.0,
+          "mrr": 1.0,
+          "ndcg5": 1.0,
+          "top5": [
+            "sym:backend/cart/service.py::CartService.checkout",
+            "file:backend/cart/service.py",
+            "sym:backend/cart/service.py::CartService",
+            "sym:backend/cart/service.py::CartService.__init__",
+            "commit:3f8938a77b89ad327cfdd7bba251c0e793de8c19"
+          ],
+          "warned": true
+        },
+        "err-07": {
+          "recall3": 0.5,
+          "recall5": 1.0,
+          "mrr": 1.0,
+          "ndcg5": 0.944847956559586,
+          "top5": [
+            "sym:worker/pkg/queue/consumer.go::Consumer.HandleOne",
+            "file:worker/pkg/queue/consumer.go",
+            "sym:worker/pkg/queue/consumer.go::<module>",
+            "commit:cf72a9ea577965757668921ac5ac1e41d3766af4",
+            "commit:e41a6ff797006f7399b4ea857211cd8c70dde5c7"
+          ],
+          "warned": true
+        },
+        "err-08": {
+          "recall3": 0.5,
+          "recall5": 0.5,
+          "mrr": 0.5,
+          "ndcg5": 0.52129602861432,
+          "top5": [
+            "file:vendor/leftpad/README.md",
+            "commit:f126abd27cabb9f4ba46a4d17b82ee82cc8dc427",
+            "commit:ff4c2de425699b7f9b1a59889e638179698148b7",
+            "inv:INV-API-002",
+            "sym:web/src/api/cartClient.ts::checkoutCart"
+          ],
+          "warned": false
+        }
+      }
+    },
+    {
+      "name": "Hybrid (BM25 + float32, RRF)",
+      "recall3": 0.6302083333333333,
+      "recall5": 0.71875,
+      "mrr": 0.8291666666666666,
+      "ndcg5": 0.703955900260569,
+      "neg_hit": 0.7333333333333333,
+      "false_alarm": 0.058823529411764705,
+      "cochange": 0.0,
+      "ram_kb": 276.4892578125,
+      "p50_ms": 0.40262450056616217,
+      "p95_ms": 0.6339806524920276,
+      "per_category": {
+        "causal": {
+          "recall5": 0.9375,
+          "mrr": 0.90625,
+          "ndcg5": 0.7544664073347629
+        },
+        "regression": {
+          "recall5": 0.7708333333333333,
+          "mrr": 1.0,
+          "ndcg5": 0.9088523520883216
+        },
+        "coupled": {
+          "recall5": 0.41666666666666663,
+          "mrr": 0.61875,
+          "ndcg5": 0.4118564796424721
+        },
+        "error-code": {
+          "recall5": 0.75,
+          "mrr": 0.7916666666666666,
+          "ndcg5": 0.7406483619767193
+        }
+      },
+      "per_query": {
+        "why-01": {
+          "recall3": 1.0,
+          "recall5": 1.0,
+          "mrr": 1.0,
+          "ndcg5": 0.7967075809905066,
+          "top5": [
+            "sym:backend/auth/token.py::is_token_expired",
+            "commit:ac36176e15e00538947d2013394ff36faddf45e3",
+            "sym:tests/backend/test_token.py::test_old_token_is_expired",
+            "sym:tests/backend/test_token.py::<module>",
+            "file:backend/auth/token.py"
+          ],
+          "warned": true
+        },
+        "why-02": {
+          "recall3": 1.0,
+          "recall5": 1.0,
+          "mrr": 1.0,
+          "ndcg5": 0.7967075809905066,
+          "top5": [
+            "sym:backend/payments/retry.py::charge_with_retry",
+            "commit:399d55665b24e09f92c9dc0340137c19fd1058c5",
+            "inv:INV-PAY-001",
+            "sym:backend/payments/gateway.py::GatewayClient.charge",
+            "file:backend/payments/retry.py"
+          ],
+          "warned": true
+        },
+        "why-03": {
+          "recall3": 0.6666666666666666,
+          "recall5": 1.0,
+          "mrr": 1.0,
+          "ndcg5": 0.804532155482531,
+          "top5": [
+            "commit:97215ead75c7c1b4a7eebe045a8f5d8ce7d600ca",
+            "commit:f126abd27cabb9f4ba46a4d17b82ee82cc8dc427",
+            "sym:backend/cache/lru.py::TTLCache.__init__",
+            "sym:backend/cache/lru.py::TTLCache.get",
+            "sym:backend/cache/lru.py::TTLCache.set"
+          ],
+          "warned": true
+        },
+        "why-04": {
+          "recall3": 1.0,
+          "recall5": 1.0,
+          "mrr": 1.0,
+          "ndcg5": 1.0,
+          "top5": [
+            "commit:5742386e7271608196dcd91ec7ef9bc8bedeb915",
+            "sym:backend/notifications/email.py::render_receipt",
+            "commit:8a4cca1fcb375356bee101816f1483ac5603bc4c",
+            "file:backend/notifications/email.py",
+            "commit:71012c7ff1ddedfd823ca6b3d7096c2e7d5d0648"
+          ],
+          "false_alarm": false
+        },
+        "why-05": {
+          "recall3": 0.0,
+          "recall5": 0.5,
+          "mrr": 0.25,
+          "ndcg5": 0.35583989829307827,
+          "top5": [
+            "sym:worker/pkg/queue/consumer.go::Consumer",
+            "sym:worker/pkg/queue/consumer.go::<module>",
+            "sym:worker/pkg/queue/consumer.go::NewConsumer",
+            "commit:cf72a9ea577965757668921ac5ac1e41d3766af4",
+            "file:worker/pkg/queue/consumer.go"
+          ],
+          "warned": false
+        },
+        "why-06": {
+          "recall3": 1.0,
+          "recall5": 1.0,
+          "mrr": 1.0,
+          "ndcg5": 0.7967075809905066,
+          "top5": [
+            "sym:backend/utils/money.py::tax_cents",
+            "commit:4fcfc641c611fb50a3162996b405a49c71ef8f6f",
+            "inv:INV-MONEY-003",
+            "sym:backend/utils/money.py::<module>",
+            "file:backend/utils/money.py"
+          ],
+          "warned": true
+        },
+        "why-07": {
+          "recall3": 1.0,
+          "recall5": 1.0,
+          "mrr": 1.0,
+          "ndcg5": 0.7967075809905066,
+          "top5": [
+            "sym:web/src/components/CheckoutButton.tsx::CheckoutButton",
+            "commit:d35326cfaf6308b4079bdde9455991a6e189628e",
+            "file:web/src/components/CheckoutButton.tsx",
+            "sym:web/src/components/CheckoutButton.tsx::<module>",
+            "sym:backend/auth/token.py::is_token_expired"
+          ],
+          "false_alarm": false
+        },
+        "why-08": {
+          "recall3": 1.0,
+          "recall5": 1.0,
+          "mrr": 1.0,
+          "ndcg5": 0.6885288809404666,
+          "top5": [
+            "sym:backend/auth/refresh.py::refresh_session",
+            "file:backend/auth/refresh.py",
+            "commit:f07f52ecfbaa7b6fd603d9ba6b5e5920ba847749",
+            "sym:backend/auth/refresh.py::<module>",
+            "commit:66e0aa5b7556d917268b9aaff4df4683b280548f"
+          ],
+          "false_alarm": false
+        },
+        "bug-01": {
+          "recall3": 0.5,
+          "recall5": 0.5,
+          "mrr": 1.0,
+          "ndcg5": 0.8262346571285599,
+          "top5": [
+            "commit:399d55665b24e09f92c9dc0340137c19fd1058c5",
+            "sym:backend/payments/gateway.py::user_message_for",
+            "commit:f1c216a1105b6c658ca87883c00df2009579b86b",
+            "commit:5742386e7271608196dcd91ec7ef9bc8bedeb915",
+            "sym:backend/notifications/email.py::render_receipt"
+          ],
+          "warned": false
+        },
+        "bug-02": {
+          "recall3": 0.5,
+          "recall5": 0.5,
+          "mrr": 1.0,
+          "ndcg5": 0.8262346571285599,
+          "top5": [
+            "commit:ac36176e15e00538947d2013394ff36faddf45e3",
+            "sym:tests/backend/test_token.py::test_token_within_clock_skew_is_valid",
+            "sym:backend/auth/token.py::sign_payload",
+            "sym:backend/auth/token.py::issue_token",
+            "sym:backend/auth/token.py::<module>"
+          ],
+          "warned": true
+        },
+        "bug-03": {
+          "recall3": 1.0,
+          "recall5": 1.0,
+          "mrr": 1.0,
+          "ndcg5": 1.0,
+          "top5": [
+            "commit:f126abd27cabb9f4ba46a4d17b82ee82cc8dc427",
+            "sym:backend/cache/lru.py::TTLCache.get",
+            "sym:backend/cache/lru.py::TTLCache",
+            "sym:backend/cache/lru.py::TTLCache.set",
+            "commit:97215ead75c7c1b4a7eebe045a8f5d8ce7d600ca"
+          ],
+          "warned": true
+        },
+        "bug-04": {
+          "recall3": 0.5,
+          "recall5": 0.5,
+          "mrr": 1.0,
+          "ndcg5": 0.8262346571285599,
+          "top5": [
+            "commit:75e886d038f0834c93318376e92d3ef0fcb81490",
+            "commit:e41a6ff797006f7399b4ea857211cd8c70dde5c7",
+            "commit:ff753a53dd4e32402eb5a1bbe0a1ae1de9d4a957",
+            "sym:worker/pkg/queue/consumer.go::Broker",
+            "commit:9d8b7cd135c1be8b46f59ce250f152073556f7dc"
+          ],
+          "false_alarm": false
+        },
+        "bug-05": {
+          "recall3": 0.6666666666666666,
+          "recall5": 0.6666666666666666,
+          "mrr": 1.0,
+          "ndcg5": 0.8472668887613066,
+          "top5": [
+            "commit:33e1cdc3abebc20439199a303d7af2a272f07f81",
+            "sym:backend/catalog/products.py::get_product",
+            "sym:backend/search/query_parser.py::extract_sku",
+            "file:backend/search/query_parser.py",
+            "sym:web/src/pages/Home.tsx::Home"
+          ],
+          "false_alarm": false
+        },
+        "bug-06": {
+          "recall3": 1.0,
+          "recall5": 1.0,
+          "mrr": 1.0,
+          "ndcg5": 1.0,
+          "top5": [
+            "commit:f07f52ecfbaa7b6fd603d9ba6b5e5920ba847749",
+            "sym:backend/auth/refresh.py::refresh_session",
+            "file:backend/auth/refresh.py",
+            "sym:backend/auth/refresh.py::<module>",
+            "commit:66e0aa5b7556d917268b9aaff4df4683b280548f"
+          ],
+          "false_alarm": false
+        },
+        "bug-07": {
+          "recall3": 1.0,
+          "recall5": 1.0,
+          "mrr": 1.0,
+          "ndcg5": 1.0,
+          "top5": [
+            "commit:4fcfc641c611fb50a3162996b405a49c71ef8f6f",
+            "sym:backend/utils/money.py::tax_cents",
+            "inv:INV-MONEY-003",
+            "commit:b8fb2a57b266cddba53e1fe8b288b35f8aa1d918",
+            "sym:web/src/api/orderTypes.ts::Order"
+          ],
+          "warned": false
+        },
+        "bug-08": {
+          "recall3": 0.5,
+          "recall5": 1.0,
+          "mrr": 1.0,
+          "ndcg5": 0.944847956559586,
+          "top5": [
+            "commit:cf72a9ea577965757668921ac5ac1e41d3766af4",
+            "sym:worker/pkg/queue/consumer.go::Consumer",
+            "sym:worker/pkg/queue/consumer.go::<module>",
+            "sym:worker/pkg/queue/consumer.go::Consumer.HandleOne",
+            "sym:worker/pkg/queue/consumer.go::NewConsumer"
+          ],
+          "warned": true
+        },
+        "cpl-01": {
+          "recall3": 0.3333333333333333,
+          "recall5": 0.3333333333333333,
+          "mrr": 0.5,
+          "ndcg5": 0.35098520806348704,
+          "top5": [
+            "commit:844332cce41f9a4399935a72c652ea21778b1a51",
+            "sym:backend/api/schemas.py::OrderSchema",
+            "commit:50236e8cf8b6981350c91c67a36076e3d00c89ca",
+            "file:backend/api/schemas.py",
+            "sym:backend/api/schemas.py::OrderSchema.to_json"
+          ],
+          "false_alarm": false,
+          "coupled_found": false
+        },
+        "cpl-02": {
+          "recall3": 0.3333333333333333,
+          "recall5": 0.3333333333333333,
+          "mrr": 1.0,
+          "ndcg5": 0.5562983930884396,
+          "top5": [
+            "sym:backend/api/schemas.py::OrderSchema",
+            "sym:backend/api/schemas.py::OrderSchema.to_json",
+            "commit:50236e8cf8b6981350c91c67a36076e3d00c89ca",
+            "file:backend/api/schemas.py",
+            "file:backend/db/schema.sql"
+          ],
+          "false_alarm": false,
+          "coupled_found": false
+        },
+        "cpl-03": {
+          "recall3": 0.0,
+          "recall5": 0.5,
+          "mrr": 0.25,
+          "ndcg5": 0.26406812257259094,
+          "top5": [
+            "commit:5345de6c06ee3381404ce66f33e3e8af14238d30",
+            "commit:6942911ad455f91047a00458c5be229e3fd5a238",
+            "sym:backend/payments/retry.py::<module>",
+            "sym:backend/config/settings.py::<module>",
+            "sym:backend/payments/gateway.py::GatewayTimeout"
+          ],
+          "false_alarm": false,
+          "coupled_found": false
+        },
+        "cpl-04": {
+          "recall3": 0.5,
+          "recall5": 0.5,
+          "mrr": 0.5,
+          "ndcg5": 0.3868528072345416,
+          "top5": [
+            "sym:backend/cart/service.py::CartService",
+            "sym:backend/cart/service.py::CartService.checkout",
+            "file:backend/cart/service.py",
+            "commit:3f8938a77b89ad327cfdd7bba251c0e793de8c19",
+            "sym:backend/cart/service.py::CartService.__init__"
+          ],
+          "false_alarm": false,
+          "coupled_found": false
+        },
+        "cpl-05": {
+          "recall3": 0.0,
+          "recall5": 0.5,
+          "mrr": 0.2,
+          "ndcg5": 0.23719771276929622,
+          "top5": [
+            "commit:e41a6ff797006f7399b4ea857211cd8c70dde5c7",
+            "sym:worker/pkg/queue/backoff.go::<module>",
+            "commit:75e886d038f0834c93318376e92d3ef0fcb81490",
+            "file:worker/pkg/queue/backoff.go",
+            "sym:worker/pkg/queue/backoff.go::Backoff"
+          ],
+          "false_alarm": false,
+          "coupled_found": false
+        },
+        "cpl-06": {
+          "recall3": 0.5,
+          "recall5": 0.5,
+          "mrr": 0.5,
+          "ndcg5": 0.3868528072345416,
+          "top5": [
+            "commit:71012c7ff1ddedfd823ca6b3d7096c2e7d5d0648",
+            "sym:backend/notifications/email.py::render_receipt",
+            "file:backend/notifications/email.py",
+            "commit:5742386e7271608196dcd91ec7ef9bc8bedeb915",
+            "commit:8a4cca1fcb375356bee101816f1483ac5603bc4c"
+          ],
+          "false_alarm": false,
+          "coupled_found": false
+        },
+        "cpl-07": {
+          "recall3": 0.3333333333333333,
+          "recall5": 0.3333333333333333,
+          "mrr": 1.0,
+          "ndcg5": 0.5562983930884396,
+          "top5": [
+            "file:backend/db/schema.sql",
+            "commit:50236e8cf8b6981350c91c67a36076e3d00c89ca",
+            "commit:62e3c93ff8b3cf8569793550c88a1ec553d976f8",
+            "sym:backend/api/schemas.py::OrderSchema.to_json",
+            "commit:ece3c154e1d4e206d1913c0a310c78e22d4bbfbc"
+          ],
+          "false_alarm": false,
+          "coupled_found": false
+        },
+        "cpl-08": {
+          "recall3": 0.3333333333333333,
+          "recall5": 0.3333333333333333,
+          "mrr": 1.0,
+          "ndcg5": 0.5562983930884396,
+          "top5": [
+            "sym:mobile/src/parsers/orderParser.ts::parseOrder",
+            "file:mobile/src/parsers/orderParser.ts",
+            "commit:8178032ca3e79126a47170b17b1fda3d2c0d68bc",
+            "commit:844332cce41f9a4399935a72c652ea21778b1a51",
+            "commit:e100c8e4abad98172919c03ec404a3a7de136050"
+          ],
+          "warned": true,
+          "coupled_found": false
+        },
+        "err-01": {
+          "recall3": 1.0,
+          "recall5": 1.0,
+          "mrr": 1.0,
+          "ndcg5": 1.0,
+          "top5": [
+            "sym:backend/cart/service.py::CartStaleError",
+            "commit:3f8938a77b89ad327cfdd7bba251c0e793de8c19",
+            "sym:web/src/api/cartClient.ts::checkoutCart",
+            "file:backend/cart/service.py",
+            "sym:backend/cart/service.py::CartService.checkout"
+          ],
+          "false_alarm": false
+        },
+        "err-02": {
+          "recall3": 1.0,
+          "recall5": 1.0,
+          "mrr": 1.0,
+          "ndcg5": 0.9197207891481876,
+          "top5": [
+            "commit:f1c216a1105b6c658ca87883c00df2009579b86b",
+            "sym:backend/payments/gateway.py::<module>",
+            "sym:backend/payments/gateway.py::user_message_for",
+            "commit:ac36176e15e00538947d2013394ff36faddf45e3",
+            "sym:backend/auth/token.py::<module>"
+          ],
+          "false_alarm": false
+        },
+        "err-03": {
+          "recall3": 0.5,
+          "recall5": 0.5,
+          "mrr": 1.0,
+          "ndcg5": 0.8262346571285599,
+          "top5": [
+            "commit:ac36176e15e00538947d2013394ff36faddf45e3",
+            "sym:backend/auth/token.py::<module>",
+            "commit:6942911ad455f91047a00458c5be229e3fd5a238",
+            "commit:399d55665b24e09f92c9dc0340137c19fd1058c5",
+            "inv:INV-PAY-001"
+          ],
+          "false_alarm": false
+        },
+        "err-04": {
+          "recall3": 0.5,
+          "recall5": 0.5,
+          "mrr": 0.5,
+          "ndcg5": 0.3868528072345416,
+          "top5": [
+            "sym:backend/payments/gateway.py::GatewayClient.charge",
+            "commit:399d55665b24e09f92c9dc0340137c19fd1058c5",
+            "sym:backend/payments/gateway.py::GatewayTimeout",
+            "commit:6942911ad455f91047a00458c5be229e3fd5a238",
+            "sym:backend/catalog/products.py::get_product"
+          ],
+          "warned": true
+        },
+        "err-05": {
+          "recall3": 0.5,
+          "recall5": 0.5,
+          "mrr": 1.0,
+          "ndcg5": 0.8262346571285599,
+          "top5": [
+            "commit:5742386e7271608196dcd91ec7ef9bc8bedeb915",
+            "commit:f07f52ecfbaa7b6fd603d9ba6b5e5920ba847749",
+            "sym:backend/auth/refresh.py::refresh_session",
+            "inv:INV-API-002",
+            "inv:INV-MONEY-003"
+          ],
+          "false_alarm": true
+        },
+        "err-06": {
+          "recall3": 1.0,
+          "recall5": 1.0,
+          "mrr": 0.3333333333333333,
+          "ndcg5": 0.5,
+          "top5": [
+            "sym:backend/cart/service.py::CartService",
+            "file:backend/cart/service.py",
+            "sym:backend/cart/service.py::CartService.checkout",
+            "sym:backend/cart/service.py::CartService.__init__",
+            "commit:3f8938a77b89ad327cfdd7bba251c0e793de8c19"
+          ],
+          "warned": true
+        },
+        "err-07": {
+          "recall3": 0.5,
+          "recall5": 1.0,
+          "mrr": 1.0,
+          "ndcg5": 0.944847956559586,
+          "top5": [
+            "sym:worker/pkg/queue/consumer.go::Consumer.HandleOne",
+            "file:worker/pkg/queue/consumer.go",
+            "sym:worker/pkg/queue/consumer.go::<module>",
+            "commit:cf72a9ea577965757668921ac5ac1e41d3766af4",
+            "commit:e41a6ff797006f7399b4ea857211cd8c70dde5c7"
+          ],
+          "warned": true
+        },
+        "err-08": {
+          "recall3": 0.5,
+          "recall5": 0.5,
+          "mrr": 0.5,
+          "ndcg5": 0.52129602861432,
+          "top5": [
+            "file:vendor/leftpad/README.md",
+            "commit:f126abd27cabb9f4ba46a4d17b82ee82cc8dc427",
+            "commit:ff4c2de425699b7f9b1a59889e638179698148b7",
+            "sym:web/src/api/cartClient.ts::checkoutCart",
+            "commit:3f8938a77b89ad327cfdd7bba251c0e793de8c19"
+          ],
+          "warned": false
+        }
+      }
+    },
+    {
+      "name": "**git-engram** (full)",
+      "recall3": 0.7395833333333333,
+      "recall5": 0.78125,
+      "mrr": 0.8776041666666667,
+      "ndcg5": 0.7930994804732605,
+      "neg_hit": 0.9333333333333333,
+      "false_alarm": 0.058823529411764705,
+      "cochange": 0.625,
+      "ram_kb": 95.462890625,
+      "p50_ms": 1.7601664876565337,
+      "p95_ms": 2.652424699044786,
+      "per_category": {
+        "causal": {
+          "recall5": 1.0,
+          "mrr": 1.0,
+          "ndcg5": 0.9477452161151179
+        },
+        "regression": {
+          "recall5": 0.7083333333333333,
+          "mrr": 0.9375,
+          "ndcg5": 0.8598702341292623
+        },
+        "coupled": {
+          "recall5": 0.6666666666666666,
+          "mrr": 0.71875,
+          "ndcg5": 0.5791227756776108
+        },
+        "error-code": {
+          "recall5": 0.75,
+          "mrr": 0.8541666666666666,
+          "ndcg5": 0.7856596959710511
+        }
+      },
+      "per_query": {
+        "why-01": {
+          "recall3": 1.0,
+          "recall5": 1.0,
+          "mrr": 1.0,
+          "ndcg5": 1.0,
+          "top5": [
+            "commit:ac36176e15e00538947d2013394ff36faddf45e3",
+            "sym:backend/auth/token.py::is_token_expired",
+            "commit:66e0aa5b7556d917268b9aaff4df4683b280548f",
+            "sym:tests/backend/test_token.py::test_old_token_is_expired",
+            "sym:tests/backend/test_token.py::<module>"
+          ],
+          "warned": true
+        },
+        "why-02": {
+          "recall3": 1.0,
+          "recall5": 1.0,
+          "mrr": 1.0,
+          "ndcg5": 1.0,
+          "top5": [
+            "commit:399d55665b24e09f92c9dc0340137c19fd1058c5",
+            "sym:backend/payments/retry.py::charge_with_retry",
+            "inv:INV-PAY-001",
+            "sym:backend/payments/gateway.py::GatewayClient.charge",
+            "file:backend/payments/retry.py"
+          ],
+          "warned": true
+        },
+        "why-03": {
+          "recall3": 1.0,
+          "recall5": 1.0,
+          "mrr": 1.0,
+          "ndcg5": 0.8213137146137828,
+          "top5": [
+            "commit:97215ead75c7c1b4a7eebe045a8f5d8ce7d600ca",
+            "commit:f126abd27cabb9f4ba46a4d17b82ee82cc8dc427",
+            "sym:backend/cache/lru.py::TTLCache.get",
+            "commit:66e0aa5b7556d917268b9aaff4df4683b280548f",
+            "file:backend/catalog/products.py"
+          ],
+          "warned": true
+        },
+        "why-04": {
+          "recall3": 1.0,
+          "recall5": 1.0,
+          "mrr": 1.0,
+          "ndcg5": 1.0,
+          "top5": [
+            "commit:5742386e7271608196dcd91ec7ef9bc8bedeb915",
+            "sym:backend/notifications/email.py::render_receipt",
+            "file:backend/templates/receipt.html",
+            "commit:8a4cca1fcb375356bee101816f1483ac5603bc4c",
+            "commit:71012c7ff1ddedfd823ca6b3d7096c2e7d5d0648"
+          ],
+          "false_alarm": false
+        },
+        "why-05": {
+          "recall3": 1.0,
+          "recall5": 1.0,
+          "mrr": 1.0,
+          "ndcg5": 0.9639404333166532,
+          "top5": [
+            "commit:cf72a9ea577965757668921ac5ac1e41d3766af4",
+            "commit:e41a6ff797006f7399b4ea857211cd8c70dde5c7",
+            "sym:worker/pkg/queue/consumer.go::Consumer.HandleOne",
+            "commit:75e886d038f0834c93318376e92d3ef0fcb81490",
+            "sym:worker/pkg/queue/backoff.go::<module>"
+          ],
+          "warned": true
+        },
+        "why-06": {
+          "recall3": 1.0,
+          "recall5": 1.0,
+          "mrr": 1.0,
+          "ndcg5": 1.0,
+          "top5": [
+            "commit:4fcfc641c611fb50a3162996b405a49c71ef8f6f",
+            "sym:backend/utils/money.py::tax_cents",
+            "inv:INV-MONEY-003",
+            "commit:f74fe04bf7ff76d71628e96088d768f92f8f615e",
+            "commit:ece3c154e1d4e206d1913c0a310c78e22d4bbfbc"
+          ],
+          "warned": true
+        },
+        "why-07": {
+          "recall3": 1.0,
+          "recall5": 1.0,
+          "mrr": 1.0,
+          "ndcg5": 0.7967075809905066,
+          "top5": [
+            "sym:web/src/components/CheckoutButton.tsx::CheckoutButton",
+            "commit:d35326cfaf6308b4079bdde9455991a6e189628e",
+            "sym:tests/backend/test_token.py::test_old_token_is_expired",
+            "commit:399d55665b24e09f92c9dc0340137c19fd1058c5",
+            "commit:66e0aa5b7556d917268b9aaff4df4683b280548f"
+          ],
+          "false_alarm": false
+        },
+        "why-08": {
+          "recall3": 1.0,
+          "recall5": 1.0,
+          "mrr": 1.0,
+          "ndcg5": 1.0,
+          "top5": [
+            "commit:f07f52ecfbaa7b6fd603d9ba6b5e5920ba847749",
+            "sym:backend/auth/refresh.py::refresh_session",
+            "commit:66e0aa5b7556d917268b9aaff4df4683b280548f",
+            "file:backend/auth/refresh.py",
+            "sym:tests/backend/test_token.py::test_fresh_token_is_valid"
+          ],
+          "false_alarm": false
+        },
+        "bug-01": {
+          "recall3": 0.5,
+          "recall5": 0.5,
+          "mrr": 1.0,
+          "ndcg5": 0.8262346571285599,
+          "top5": [
+            "commit:399d55665b24e09f92c9dc0340137c19fd1058c5",
+            "sym:backend/payments/gateway.py::user_message_for",
+            "commit:f1c216a1105b6c658ca87883c00df2009579b86b",
+            "commit:5742386e7271608196dcd91ec7ef9bc8bedeb915",
+            "inv:INV-PAY-001"
+          ],
+          "warned": true
+        },
+        "bug-02": {
+          "recall3": 0.5,
+          "recall5": 0.5,
+          "mrr": 1.0,
+          "ndcg5": 0.8262346571285599,
+          "top5": [
+            "commit:ac36176e15e00538947d2013394ff36faddf45e3",
+            "sym:tests/backend/test_token.py::test_token_within_clock_skew_is_valid",
+            "commit:66e0aa5b7556d917268b9aaff4df4683b280548f",
+            "sym:backend/auth/token.py::sign_payload",
+            "sym:backend/auth/token.py::<module>"
+          ],
+          "warned": true
+        },
+        "bug-03": {
+          "recall3": 1.0,
+          "recall5": 1.0,
+          "mrr": 1.0,
+          "ndcg5": 1.0,
+          "top5": [
+            "commit:f126abd27cabb9f4ba46a4d17b82ee82cc8dc427",
+            "sym:backend/cache/lru.py::TTLCache.get",
+            "commit:97215ead75c7c1b4a7eebe045a8f5d8ce7d600ca",
+            "commit:66e0aa5b7556d917268b9aaff4df4683b280548f",
+            "inv:INV-PAY-001"
+          ],
+          "warned": true
+        },
+        "bug-04": {
+          "recall3": 0.5,
+          "recall5": 0.5,
+          "mrr": 1.0,
+          "ndcg5": 0.8262346571285599,
+          "top5": [
+            "commit:75e886d038f0834c93318376e92d3ef0fcb81490",
+            "commit:9d8b7cd135c1be8b46f59ce250f152073556f7dc",
+            "commit:e41a6ff797006f7399b4ea857211cd8c70dde5c7",
+            "commit:ff753a53dd4e32402eb5a1bbe0a1ae1de9d4a957",
+            "file:worker/config/worker.yaml"
+          ],
+          "false_alarm": true
+        },
+        "bug-05": {
+          "recall3": 0.6666666666666666,
+          "recall5": 0.6666666666666666,
+          "mrr": 1.0,
+          "ndcg5": 0.878961873034099,
+          "top5": [
+            "commit:33e1cdc3abebc20439199a303d7af2a272f07f81",
+            "sym:backend/search/query_parser.py::extract_sku",
+            "sym:backend/catalog/products.py::get_product",
+            "sym:vendor/leftpad/leftpad.py::leftpad",
+            "sym:web/src/api/orderTypes.ts::OrderItem"
+          ],
+          "false_alarm": false
+        },
+        "bug-06": {
+          "recall3": 1.0,
+          "recall5": 1.0,
+          "mrr": 1.0,
+          "ndcg5": 1.0,
+          "top5": [
+            "commit:f07f52ecfbaa7b6fd603d9ba6b5e5920ba847749",
+            "sym:backend/auth/refresh.py::refresh_session",
+            "commit:66e0aa5b7556d917268b9aaff4df4683b280548f",
+            "sym:tests/backend/test_token.py::<module>",
+            "sym:backend/auth/token.py::<module>"
+          ],
+          "false_alarm": false
+        },
+        "bug-07": {
+          "recall3": 0.5,
+          "recall5": 0.5,
+          "mrr": 0.5,
+          "ndcg5": 0.52129602861432,
+          "top5": [
+            "sym:backend/api/schemas.py::OrderSchema",
+            "commit:4fcfc641c611fb50a3162996b405a49c71ef8f6f",
+            "sym:backend/db/models.py::OrderRow",
+            "file:backend/db/schema.sql",
+            "file:backend/templates/receipt.html"
+          ],
+          "warned": true
+        },
+        "bug-08": {
+          "recall3": 1.0,
+          "recall5": 1.0,
+          "mrr": 1.0,
+          "ndcg5": 1.0,
+          "top5": [
+            "commit:cf72a9ea577965757668921ac5ac1e41d3766af4",
+            "sym:worker/pkg/queue/consumer.go::Consumer.HandleOne",
+            "commit:e41a6ff797006f7399b4ea857211cd8c70dde5c7",
+            "commit:f1c216a1105b6c658ca87883c00df2009579b86b",
+            "sym:backend/payments/gateway.py::user_message_for"
+          ],
+          "warned": true
+        },
+        "cpl-01": {
+          "recall3": 0.6666666666666666,
+          "recall5": 0.6666666666666666,
+          "mrr": 1.0,
+          "ndcg5": 0.4635819942403664,
+          "top5": [
+            "sym:web/src/api/orderTypes.ts::Order",
+            "sym:backend/db/models.py::OrderRow",
+            "sym:backend/api/schemas.py::OrderSchema",
+            "commit:844332cce41f9a4399935a72c652ea21778b1a51",
+            "commit:50236e8cf8b6981350c91c67a36076e3d00c89ca"
+          ],
+          "false_alarm": false,
+          "coupled_found": false
+        },
+        "cpl-02": {
+          "recall3": 0.6666666666666666,
+          "recall5": 0.6666666666666666,
+          "mrr": 1.0,
+          "ndcg5": 0.9072836011519267,
+          "top5": [
+            "sym:backend/api/schemas.py::OrderSchema",
+            "sym:web/src/api/orderTypes.ts::Order",
+            "sym:backend/db/models.py::OrderRow",
+            "commit:50236e8cf8b6981350c91c67a36076e3d00c89ca",
+            "commit:844332cce41f9a4399935a72c652ea21778b1a51"
+          ],
+          "false_alarm": false,
+          "coupled_found": true
+        },
+        "cpl-03": {
+          "recall3": 1.0,
+          "recall5": 1.0,
+          "mrr": 1.0,
+          "ndcg5": 1.0,
+          "top5": [
+            "file:deploy/helm/values.yaml",
+            "sym:backend/config/settings.py::<module>",
+            "commit:5345de6c06ee3381404ce66f33e3e8af14238d30",
+            "commit:6942911ad455f91047a00458c5be229e3fd5a238",
+            "sym:backend/payments/retry.py::<module>"
+          ],
+          "false_alarm": false,
+          "coupled_found": true
+        },
+        "cpl-04": {
+          "recall3": 0.0,
+          "recall5": 0.5,
+          "mrr": 0.25,
+          "ndcg5": 0.26406812257259094,
+          "top5": [
+            "sym:backend/cart/service.py::CartService",
+            "commit:3f8938a77b89ad327cfdd7bba251c0e793de8c19",
+            "file:backend/cart/service.py",
+            "sym:web/src/api/cartClient.ts::checkoutCart",
+            "commit:66e0aa5b7556d917268b9aaff4df4683b280548f"
+          ],
+          "false_alarm": false,
+          "coupled_found": true
+        },
+        "cpl-05": {
+          "recall3": 0.5,
+          "recall5": 0.5,
+          "mrr": 0.5,
+          "ndcg5": 0.3868528072345416,
+          "top5": [
+            "commit:e41a6ff797006f7399b4ea857211cd8c70dde5c7",
+            "file:worker/config/worker.yaml",
+            "sym:worker/pkg/queue/backoff.go::<module>",
+            "commit:75e886d038f0834c93318376e92d3ef0fcb81490",
+            "commit:9d8b7cd135c1be8b46f59ce250f152073556f7dc"
+          ],
+          "false_alarm": false,
+          "coupled_found": true
+        },
+        "cpl-06": {
+          "recall3": 0.5,
+          "recall5": 1.0,
+          "mrr": 0.5,
+          "ndcg5": 0.6240505200038378,
+          "top5": [
+            "commit:71012c7ff1ddedfd823ca6b3d7096c2e7d5d0648",
+            "sym:backend/notifications/email.py::render_receipt",
+            "commit:5742386e7271608196dcd91ec7ef9bc8bedeb915",
+            "commit:8a4cca1fcb375356bee101816f1483ac5603bc4c",
+            "file:backend/templates/receipt.html"
+          ],
+          "false_alarm": false,
+          "coupled_found": true
+        },
+        "cpl-07": {
+          "recall3": 0.3333333333333333,
+          "recall5": 0.6666666666666666,
+          "mrr": 0.5,
+          "ndcg5": 0.4308467671291832,
+          "top5": [
+            "sym:web/src/api/orderTypes.ts::OrderItem",
+            "file:backend/db/schema.sql",
+            "commit:50236e8cf8b6981350c91c67a36076e3d00c89ca",
+            "sym:backend/api/schemas.py::OrderSchema",
+            "commit:62e3c93ff8b3cf8569793550c88a1ec553d976f8"
+          ],
+          "false_alarm": false,
+          "coupled_found": false
+        },
+        "cpl-08": {
+          "recall3": 0.3333333333333333,
+          "recall5": 0.3333333333333333,
+          "mrr": 1.0,
+          "ndcg5": 0.5562983930884396,
+          "top5": [
+            "sym:mobile/src/parsers/orderParser.ts::parseOrder",
+            "commit:8178032ca3e79126a47170b17b1fda3d2c0d68bc",
+            "commit:e100c8e4abad98172919c03ec404a3a7de136050",
+            "commit:844332cce41f9a4399935a72c652ea21778b1a51",
+            "commit:b8fb2a57b266cddba53e1fe8b288b35f8aa1d918"
+          ],
+          "warned": true,
+          "coupled_found": false
+        },
+        "err-01": {
+          "recall3": 1.0,
+          "recall5": 1.0,
+          "mrr": 1.0,
+          "ndcg5": 1.0,
+          "top5": [
+            "commit:3f8938a77b89ad327cfdd7bba251c0e793de8c19",
+            "sym:backend/cart/service.py::CartStaleError",
+            "sym:web/src/api/cartClient.ts::checkoutCart",
+            "commit:66e0aa5b7556d917268b9aaff4df4683b280548f",
+            "file:backend/cart/service.py"
+          ],
+          "false_alarm": false
+        },
+        "err-02": {
+          "recall3": 1.0,
+          "recall5": 1.0,
+          "mrr": 1.0,
+          "ndcg5": 0.9197207891481876,
+          "top5": [
+            "commit:f1c216a1105b6c658ca87883c00df2009579b86b",
+            "sym:backend/payments/gateway.py::<module>",
+            "sym:backend/payments/gateway.py::user_message_for",
+            "sym:backend/payments/retry.py::charge_with_retry",
+            "sym:tests/backend/test_token.py::test_fresh_token_is_valid"
+          ],
+          "false_alarm": false
+        },
+        "err-03": {
+          "recall3": 0.5,
+          "recall5": 0.5,
+          "mrr": 1.0,
+          "ndcg5": 0.8262346571285599,
+          "top5": [
+            "commit:ac36176e15e00538947d2013394ff36faddf45e3",
+            "sym:backend/auth/token.py::<module>",
+            "commit:6942911ad455f91047a00458c5be229e3fd5a238",
+            "inv:INV-PAY-001",
+            "commit:4fcfc641c611fb50a3162996b405a49c71ef8f6f"
+          ],
+          "false_alarm": false
+        },
+        "err-04": {
+          "recall3": 0.5,
+          "recall5": 0.5,
+          "mrr": 0.5,
+          "ndcg5": 0.3868528072345416,
+          "top5": [
+            "sym:backend/payments/gateway.py::GatewayClient.charge",
+            "commit:399d55665b24e09f92c9dc0340137c19fd1058c5",
+            "file:deploy/helm/values.yaml",
+            "commit:6942911ad455f91047a00458c5be229e3fd5a238",
+            "commit:3f8938a77b89ad327cfdd7bba251c0e793de8c19"
+          ],
+          "warned": true
+        },
+        "err-05": {
+          "recall3": 0.5,
+          "recall5": 0.5,
+          "mrr": 1.0,
+          "ndcg5": 0.8262346571285599,
+          "top5": [
+            "commit:5742386e7271608196dcd91ec7ef9bc8bedeb915",
+            "commit:f07f52ecfbaa7b6fd603d9ba6b5e5920ba847749",
+            "file:backend/templates/receipt.html",
+            "sym:backend/auth/refresh.py::refresh_session",
+            "sym:backend/payments/retry.py::charge_with_retry"
+          ],
+          "false_alarm": false
+        },
+        "err-06": {
+          "recall3": 1.0,
+          "recall5": 1.0,
+          "mrr": 0.3333333333333333,
+          "ndcg5": 0.5,
+          "top5": [
+            "file:backend/cart/service.py",
+            "commit:3f8938a77b89ad327cfdd7bba251c0e793de8c19",
+            "sym:backend/cart/service.py::CartService.checkout",
+            "commit:66e0aa5b7556d917268b9aaff4df4683b280548f",
+            "sym:web/src/api/cartClient.ts::checkoutCart"
+          ],
+          "warned": true
+        },
+        "err-07": {
+          "recall3": 1.0,
+          "recall5": 1.0,
+          "mrr": 1.0,
+          "ndcg5": 1.0,
+          "top5": [
+            "sym:worker/pkg/queue/consumer.go::Consumer.HandleOne",
+            "commit:cf72a9ea577965757668921ac5ac1e41d3766af4",
+            "commit:e41a6ff797006f7399b4ea857211cd8c70dde5c7",
+            "file:worker/pkg/queue/consumer.go",
+            "commit:f126abd27cabb9f4ba46a4d17b82ee82cc8dc427"
+          ],
+          "warned": true
+        },
+        "err-08": {
+          "recall3": 0.5,
+          "recall5": 0.5,
+          "mrr": 1.0,
+          "ndcg5": 0.8262346571285599,
+          "top5": [
+            "commit:f126abd27cabb9f4ba46a4d17b82ee82cc8dc427",
+            "file:vendor/leftpad/README.md",
+            "commit:ff4c2de425699b7f9b1a59889e638179698148b7",
+            "sym:web/src/api/cartClient.ts::checkoutCart",
+            "commit:3f8938a77b89ad327cfdd7bba251c0e793de8c19"
+          ],
+          "warned": false
+        }
+      }
+    }
+  ],
+  "ablations": [
+    {
+      "name": "git-engram (full)",
+      "recall3": 0.7395833333333333,
+      "recall5": 0.78125,
+      "mrr": 0.8776041666666667,
+      "ndcg5": 0.7930994804732605,
+      "neg_hit": 0.9333333333333333,
+      "false_alarm": 0.058823529411764705,
+      "cochange": 0.625,
+      "ram_kb": 95.462890625,
+      "p50_ms": 1.6902494971873239,
+      "p95_ms": 2.609852043678984,
+      "per_category": {
+        "causal": {
+          "recall5": 1.0,
+          "mrr": 1.0,
+          "ndcg5": 0.9477452161151179
+        },
+        "regression": {
+          "recall5": 0.7083333333333333,
+          "mrr": 0.9375,
+          "ndcg5": 0.8598702341292623
+        },
+        "coupled": {
+          "recall5": 0.6666666666666666,
+          "mrr": 0.71875,
+          "ndcg5": 0.5791227756776108
+        },
+        "error-code": {
+          "recall5": 0.75,
+          "mrr": 0.8541666666666666,
+          "ndcg5": 0.7856596959710511
+        }
+      }
+    },
+    {
+      "name": "- co-change graph path",
+      "recall3": 0.7135416666666666,
+      "recall5": 0.7395833333333333,
+      "mrr": 0.8963541666666667,
+      "ndcg5": 0.7774568260383019,
+      "neg_hit": 0.9333333333333333,
+      "false_alarm": 0.058823529411764705,
+      "cochange": 0.125,
+      "ram_kb": 91.962890625,
+      "p50_ms": 1.714416008326225,
+      "p95_ms": 2.2264461978920735,
+      "per_category": {
+        "causal": {
+          "recall5": 1.0,
+          "mrr": 1.0,
+          "ndcg5": 0.9477452161151179
+        },
+        "regression": {
+          "recall5": 0.7708333333333333,
+          "mrr": 1.0,
+          "ndcg5": 0.9197082305524724
+        },
+        "coupled": {
+          "recall5": 0.4375,
+          "mrr": 0.73125,
+          "ndcg5": 0.4567141615145665
+        },
+        "error-code": {
+          "recall5": 0.75,
+          "mrr": 0.8541666666666666,
+          "ndcg5": 0.7856596959710511
+        }
+      }
+    },
+    {
+      "name": "- interaction reranker",
+      "recall3": 0.625,
+      "recall5": 0.734375,
+      "mrr": 0.7067708333333333,
+      "ndcg5": 0.6205324427455173,
+      "neg_hit": 0.7333333333333333,
+      "false_alarm": 0.0,
+      "cochange": 0.625,
+      "ram_kb": 95.462890625,
+      "p50_ms": 0.9440204885322601,
+      "p95_ms": 1.3772725345916115,
+      "per_category": {
+        "causal": {
+          "recall5": 0.9375,
+          "mrr": 0.5833333333333333,
+          "ndcg5": 0.5854973206768403
+        },
+        "regression": {
+          "recall5": 0.6458333333333333,
+          "mrr": 0.6875,
+          "ndcg5": 0.6563730978113994
+        },
+        "coupled": {
+          "recall5": 0.6666666666666666,
+          "mrr": 0.9166666666666666,
+          "ndcg5": 0.6192919291201118
+        },
+        "error-code": {
+          "recall5": 0.6875,
+          "mrr": 0.6395833333333334,
+          "ndcg5": 0.6209674233737179
+        }
+      }
+    },
+    {
+      "name": "- MMR file diversity",
+      "recall3": 0.7552083333333333,
+      "recall5": 0.78125,
+      "mrr": 0.8854166666666667,
+      "ndcg5": 0.7971385210974686,
+      "neg_hit": 0.9333333333333333,
+      "false_alarm": 0.058823529411764705,
+      "cochange": 0.375,
+      "ram_kb": 95.462890625,
+      "p50_ms": 1.5775630017742515,
+      "p95_ms": 2.1840790534042753,
+      "per_category": {
+        "causal": {
+          "recall5": 1.0,
+          "mrr": 1.0,
+          "ndcg5": 0.9477452161151179
+        },
+        "regression": {
+          "recall5": 0.7083333333333333,
+          "mrr": 0.9375,
+          "ndcg5": 0.8598702341292623
+        },
+        "coupled": {
+          "recall5": 0.6666666666666666,
+          "mrr": 0.7291666666666666,
+          "ndcg5": 0.5834201648134296
+        },
+        "error-code": {
+          "recall5": 0.75,
+          "mrr": 0.875,
+          "ndcg5": 0.7975184693320649
+        }
+      }
+    },
+    {
+      "name": "- time decay (plain RRF)",
+      "recall3": 0.6770833333333333,
+      "recall5": 0.7239583333333333,
+      "mrr": 0.85546875,
+      "ndcg5": 0.7596500635413717,
+      "neg_hit": 0.9333333333333333,
+      "false_alarm": 0.058823529411764705,
+      "cochange": 0.625,
+      "ram_kb": 95.462890625,
+      "p50_ms": 1.808479501050897,
+      "p95_ms": 2.3189457890111953,
+      "per_category": {
+        "causal": {
+          "recall5": 1.0,
+          "mrr": 1.0,
+          "ndcg5": 0.9438499606143
+        },
+        "regression": {
+          "recall5": 0.6458333333333333,
+          "mrr": 0.9375,
+          "ndcg5": 0.8381495662703323
+        },
+        "coupled": {
+          "recall5": 0.625,
+          "mrr": 0.65625,
+          "ndcg5": 0.5334410313098031
+        },
+        "error-code": {
+          "recall5": 0.625,
+          "mrr": 0.828125,
+          "ndcg5": 0.7231596959710511
+        }
+      }
+    },
+    {
+      "name": "float32 exact instead of 1-bit+int8",
+      "recall3": 0.7395833333333333,
+      "recall5": 0.78125,
+      "mrr": 0.8776041666666667,
+      "ndcg5": 0.7930994804732605,
+      "neg_hit": 0.9333333333333333,
+      "false_alarm": 0.058823529411764705,
+      "cochange": 0.625,
+      "ram_kb": 279.9892578125,
+      "p50_ms": 1.6674999933457002,
+      "p95_ms": 2.322795643704012,
+      "per_category": {
+        "causal": {
+          "recall5": 1.0,
+          "mrr": 1.0,
+          "ndcg5": 0.9477452161151179
+        },
+        "regression": {
+          "recall5": 0.7083333333333333,
+          "mrr": 0.9375,
+          "ndcg5": 0.8598702341292623
+        },
+        "coupled": {
+          "recall5": 0.6666666666666666,
+          "mrr": 0.71875,
+          "ndcg5": 0.5791227756776108
+        },
+        "error-code": {
+          "recall5": 0.75,
+          "mrr": 0.8541666666666666,
+          "ndcg5": 0.7856596959710511
+        }
+      }
+    }
+  ],
+  "preflight": {
+    "p50_ms": 1.4001249946886674,
+    "p95_ms": 1.9188838574336846,
+    "max_ms": 3.177750011673197,
+    "targets": [
+      {
+        "target": "backend/auth/token.py::is_token_expired",
+        "load_bearing": 1,
+        "coupled": [],
+        "warnings": [
+          1
+        ],
+        "invariants": []
+      },
+      {
+        "target": "backend/payments/retry.py::charge_with_retry",
+        "load_bearing": 1,
+        "coupled": [],
+        "warnings": [
+          2
+        ],
+        "invariants": [
+          "INV-PAY-001"
+        ]
+      },
+      {
+        "target": "backend/cache/lru.py::TTLCache.get",
+        "load_bearing": 1,
+        "coupled": [],
+        "warnings": [
+          6
+        ],
+        "invariants": []
+      },
+      {
+        "target": "backend/api/schemas.py::OrderSchema",
+        "load_bearing": 1,
+        "coupled": [
+          "mobile/src/parsers/orderParser.ts",
+          "web/src/api/orderTypes.ts",
+          "backend/db/models.py"
+        ],
+        "warnings": [],
+        "invariants": [
+          "INV-API-002"
+        ]
+      },
+      {
+        "target": "worker/pkg/queue/consumer.go::Consumer.HandleOne",
+        "load_bearing": 1,
+        "coupled": [],
+        "warnings": [
+          5
+        ],
+        "invariants": []
+      },
+      {
+        "target": "backend/utils/money.py::tax_cents",
+        "load_bearing": 1,
+        "coupled": [],
+        "warnings": [
+          4
+        ],
+        "invariants": [
+          "INV-MONEY-003"
+        ]
+      },
+      {
+        "target": "backend/config/settings.py::*",
+        "load_bearing": 1,
+        "coupled": [
+          "deploy/helm/values.yaml"
+        ],
+        "warnings": [],
+        "invariants": []
+      }
+    ]
+  },
+  "scale": [
+    {
+      "n": 10000,
+      "candidates": 400,
+      "recall@10": 0.8310000000000001,
+      "recall@10_same_dim": 0.9820000000000002,
+      "two_stage_p50_ms": 0.19808350771199912,
+      "float32_p50_ms": 0.2686875086510554,
+      "two_stage_mb": 2.78472900390625,
+      "float32_mb": 14.6484375
+    },
+    {
+      "n": 100000,
+      "candidates": 400,
+      "recall@10": 0.7380000000000002,
+      "recall@10_same_dim": 0.9680000000000001,
+      "two_stage_p50_ms": 0.6587709940504283,
+      "float32_p50_ms": 2.5325835158582777,
+      "two_stage_mb": 27.8472900390625,
+      "float32_mb": 146.484375
+    }
+  ],
+  "security": {
+    "attacks": 12,
+    "detected": 12,
+    "neutralised": 12,
+    "benign": 12,
+    "benign_modified": 0,
+    "benign_flagged": 1
+  }
+}
