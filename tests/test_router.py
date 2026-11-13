@@ -26,6 +26,10 @@ from git_engram.retrieval.router import WEIGHTS, classify
         ("users are charged twice when the network drops", "symptom"),
         ("dashboard is slow after the upgrade", "symptom"),
         ("pagination of the admin table", "general"),
+        ("invoices were silently dropped when the queue restarted", "symptom"),
+        ("the dashboard kept showing stale totals after a refresh", "symptom"),
+        ("refunds ended up negative for a handful of accounts", "symptom"),
+        ("the nightly report reached every subscriber two times", "symptom"),  # past-tense narrative fallback
     ],
 )
 def test_classification(query, klass):

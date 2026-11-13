@@ -43,7 +43,7 @@ class RetrievalConfig(BaseModel):
     # Slot budget: at most this many commit capsules inside the first ``slot_window`` results, per router class.
     slot_window: int = 5
     commit_slots: dict[str, int] = Field(
-        default_factory=lambda: {"causal": 3, "behavioral": 2, "symptom": 1, "change": 0, "exact": 2, "general": 2}
+        default_factory=lambda: {"causal": 3, "behavioral": 2, "symptom": 2, "change": 0, "exact": 2, "general": 2}
     )
     # Named-symbol pinning: a symbol the query names exactly is guaranteed a slot at or above ``pin_position``.
     pin_position: int = 1
@@ -120,6 +120,12 @@ class GraveyardConfig(BaseModel):
     # Commit-relevance gate: a retrieved commit may credit a failure only if its rerank score is at least this
     # fraction of the best one AND the failure's function is also among the top ``gate_code_hits`` code hits.
     commit_gating: bool = True
+    # Direct trigger: the #1 result (or a commit above an absolute rerank score) credits every function it modified,
+    # without the top-code-hit overlap that lower-ranked commits need.
+    commit_trigger_rank1: bool = True
+    commit_trigger_score: float = 0.65  # absolute rerank score that also triggers directly (chosen on dev)
+    trigger_intents: list[str] = Field(default_factory=lambda: ["bugfix", "security", "revert"])
+    trigger_weight: float = 0.40  # structural credit of a directly triggered failure (= threshold: fires alone)
     commit_gate: float = 0.9
     gate_code_hits: int = 5
     anchor: str = "symbol"  # "symbol" (default) or "file" (legacy: any failure in a top-3 file gets credit)

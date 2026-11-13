@@ -56,6 +56,16 @@ _SYMPTOM = re.compile(
     r"people)\b",
     re.I,
 )
+# Natural-language bug reports: silent drops, stale state, boundary cases, "kept / stopped / ended up" narratives.
+_SYMPTOM_NL = re.compile(
+    r"\b(silently|dropped|drops?|stale|stuck|forever|for\s+ages|kept|keeps|stopped|stops|never|again|second\s+time|"
+    r"in\s+a\s+(?:tight\s+)?loop|hammer\w*|ran\s+out|out\s+of\s+memory|throttled|kicked\s+out|ended\s+(?:up|right)|"
+    r"negative|shifted|vague|generic\s+error|measurably|accepted|rejected|charged|billed|priced|undercharged|"
+    r"overcharged|blocked|locked|redelivered|replayed|expired|instead\s+of|edge\s+case|boundary|unexpected\w*|"
+    r"whenever|only\s+(?:produced|showed)|went\s+(?:missing|wrong))\b",
+    re.I,
+)
+_PAST_EVENT = re.compile(r"\b(?:was|were|got|had|became|turned)\b|\b[a-z]{3,}ed\b", re.I)
 _HASH = re.compile(r"\b[0-9a-f]{7,40}\b")
 _ERROR_CODE = re.compile(r"\b(?:[A-Z][A-Z0-9]*_[A-Z0-9_]+|E\d{3,5}|[A-Z]{2,6}-\d{2,6}|TS\d{4}|E0\d{3})\b")
 _EXCEPTION = re.compile(r"\b(?:[A-Z]\w*(?:Error|Exception|Exit|Warning)|panic|WARNING|FAIL(?:ED)?|Traceback)\b")
@@ -67,7 +77,7 @@ WEIGHTS: dict[str, dict[str, float]] = {
     "behavioral": {"bm25": 1.2, "vec": 1.0, "graph": 0.3},
     "exact": {"bm25": 2.0, "vec": 0.4, "graph": 0.2},
     "change": {"bm25": 1.0, "vec": 1.0, "graph": 1.3},
-    "symptom": {"bm25": 1.2, "vec": 1.0, "graph": 0.3},
+    "symptom": {"bm25": 1.2, "vec": 1.0, "graph": 0.0},  # co-change expansion off: coupled files crowd out fixes
     "general": {"bm25": 1.0, "vec": 1.0, "graph": 1.0},
 }
 RERANK_INTENT = {
@@ -80,7 +90,8 @@ RERANK_INTENT = {
 }
 
 
-ENABLE_BEHAVIORAL = True  # switch used by the ablation study
+ENABLE_BEHAVIORAL = True  # switches used by the ablation study
+ENABLE_BROAD_SYMPTOM = True
 
 
 @dataclass(frozen=True)
@@ -106,6 +117,8 @@ def query_features(query: str) -> dict[str, bool]:
         "causal": bool(_CAUSAL.search(query)),
         "change": bool(_CHANGE.search(query)),
         "symptom": bool(_SYMPTOM.search(query)),
+        "symptom_nl": bool(_SYMPTOM_NL.search(query)),
+        "past_event": bool(_PAST_EVENT.search(query)),
         "hash": bool(_HASH.search(query)) and any(c.isdigit() for c in _HASH.search(query).group(0)),
         "error_code": bool(_ERROR_CODE.search(query)),
         "exception": bool(_EXCEPTION.search(query)),
@@ -114,6 +127,14 @@ def query_features(query: str) -> dict[str, bool]:
         "identifier": any(is_rare_token(t) for t in tokens),
         "short": len(tokens) <= 3,
     }
+
+
+def _is_bug_report(f: dict[str, bool], query: str) -> bool:
+    """A natural-language bug report: symptom vocabulary, or a past-tense narrative of at least five words that names
+    no code identifier (identifier-bearing queries are handled by the exact/behavioral routes)."""
+    if f["symptom_nl"]:
+        return True
+    return f["past_event"] and not f["identifier"] and len(raw_tokens(query)) >= 5
 
 
 def classify(query: str) -> QueryProfile:
@@ -127,7 +148,7 @@ def classify(query: str) -> QueryProfile:
         klass = "change"
     elif strong_exact or (f["identifier"] and f["short"]):
         klass = "exact"
-    elif f["symptom"]:
+    elif f["symptom"] or (ENABLE_BROAD_SYMPTOM and _is_bug_report(f, query)):
         klass = "symptom"
     else:
         klass = "general"

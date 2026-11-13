@@ -40,19 +40,20 @@ def test_benchmark_end_to_end(tmp_path):
     for name, r in dev.items():
         assert ours["ndcg5"] >= r["ndcg5"], name
         assert ours["cochange"] >= r["cochange"], name
-    # Graveyard contract on dev: the commit-relevance gate trades some recall (80% -> 73%) for precision (4% -> 0%);
-    # guard both sides so neither can regress silently.
-    assert ours["neg_hit"] >= 0.7 and ours["false_alarm"] <= 0.05
+    # Graveyard contract on dev (48 queries incl. natural-language bug reports): the direct top-commit trigger
+    # restored recall to 90% at 7% false alarms; guard both sides so neither can regress silently.
+    assert ours["neg_hit"] >= 0.85 and ours["false_alarm"] <= 0.10
     # Held-out split: only structural checks here (its numbers are reported, never asserted/tuned against).
     test = {r["name"]: r for r in payload["results"]}
     assert set(test) == set(dev) and all(len(r["per_query"]) == 30 for r in test.values())
     retired = payload["results_v1_retired"] + payload["results_v2_retired"] + payload["results_v3_retired"]
     assert all(len(r["per_query"]) == 24 for r in retired)
+    assert all(len(r["per_query"]) == 30 for r in payload["results_v4_retired"])
     assert test["**git-engram** (full)"]["p95_ms"] < 50
     assert payload["preflight"]["p50_ms"] < 20
     assert payload["scale"][0]["recall@10_same_dim"] > 0.8
     md = payload["markdown"]
-    assert "Held-out test split v4" in md and "Retired held-out split v3" in md and "Retired held-out split v1" in md
+    assert "Held-out test split v5" in md and "Retired held-out split v4" in md and "Retired held-out split v1" in md
     assert "Dev / calibration" in md and "file-level graveyard anchoring" in md and "MMR file diversity (opt-in)" in md
 
 

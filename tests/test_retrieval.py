@@ -124,13 +124,15 @@ def test_slot_budget_caps_commits_and_attaches_them_to_symbols(shopfront):
 
 def test_slot_budget_defers_instead_of_dropping(shopfront):
     r = shopfront.engine.retriever
-    commits = [d for d, m in r.meta.items() if m.kind == "commit"][:4]
-    code = [d for d, m in r.meta.items() if m.kind == "symbol"][:4]
+    cap = r.cfg.commit_slots["symptom"]
+    commits = [d for d, m in r.meta.items() if m.kind == "commit"][: cap + 3]
+    code = [d for d, m in r.meta.items() if m.kind == "symbol"][:5]
     order = commits + code
-    out = r._slot_budget(order, "symptom")  # cap 1 commit in the first 5
+    out = r._slot_budget(order, "symptom")
     assert sorted(out) == sorted(order)
-    assert sum(r.meta[d].kind == "commit" for d in out[:5]) == 1
-    assert out[:5] == [commits[0], *code] and out[5:] == commits[1:]
+    assert sum(r.meta[d].kind == "commit" for d in out[:5]) == cap
+    assert out[:5] == commits[:cap] + code[: 5 - cap]
+    assert out[5 : 5 + len(commits) - cap] == commits[cap:]  # deferred, in order, right after the window
 
 
 def test_graveyard_anchors_on_symbols_not_files(shopfront):
@@ -203,10 +205,17 @@ def test_commit_relevance_gate_blocks_sibling_commits(shopfront):
             rerank_score=score,
         )
 
-    asked = hit("sym:backend/cache/lru.py::TTLCache.set", "symbol", "backend/cache/lru.py", "TTLCache.set", 1.0)
-    hits = [asked, hit(f"commit:{revert}", "commit", score=0.95)]
+    # Realistic rerank scores (top scores sit around 0.4-0.6): the revert commit passes the relative gate
+    # (>= 0.9 x best) but is neither rank 1 nor above the absolute trigger, so the code-overlap check applies.
+    asked = hit("sym:backend/cache/lru.py::TTLCache.set", "symbol", "backend/cache/lru.py", "TTLCache.set", 0.60)
+    hits = [asked, hit(f"commit:{revert}", "commit", score=0.58)]
     symbols, _ = e._retrieved_context(hits, 3)
     assert ("backend/cache/lru.py", "TTLCache.get") not in symbols  # get() is not among the top code hits
+    # Documented trade-off: a load-bearing commit above the absolute trigger score credits its functions directly.
+    strong = [asked, hit(f"commit:{revert}", "commit", score=e.cfg.graveyard.commit_trigger_score + 0.05)]
+    triggered: set = set()
+    e._retrieved_context(strong, 3, triggered)
+    assert ("backend/cache/lru.py", "TTLCache.get") in triggered
     e.cfg.graveyard.commit_gating = False
     try:
         ungated, _ = e._retrieved_context(hits, 3)
@@ -247,3 +256,50 @@ def test_mmr_is_opt_in():
     from git_engram.retrieval.engine import FULL
 
     assert FULL.diversify is False and RetrievalConfig().mmr is False
+
+
+def test_symptom_route_skips_co_change_expansion(shopfront):
+    from git_engram.retrieval.engine import FULL
+
+    res = shopfront.engine.retriever.retrieve("invoices were silently dropped after the broker restarted", 10, FULL)
+    assert res.profile.klass == "symptom" and res.profile.weights["graph"] == 0.0
+    assert all(h.graph_rank is None for h in res.hits)
+
+
+def test_load_bearing_top_commit_triggers_its_functions_directly(shopfront):
+    from git_engram.models import Hit
+
+    e = shopfront.engine
+
+    def hit(key, kind, path=None, symbol=None, score=0.5):
+        return Hit(
+            doc_id=0,
+            doc_key=key,
+            kind=kind,
+            path=path,
+            symbol=symbol,
+            title="",
+            snippet="",
+            ts=None,
+            score=score,
+            rerank_score=score,
+        )
+
+    fix = shopfront.info.commit_by_prefix("fix(payments): reuse one idempotency key")
+    unrelated = hit("sym:backend/utils/money.py::tax_cents", "symbol", "backend/utils/money.py", "tax_cents", 0.4)
+    triggered: set = set()
+    symbols, _ = e._retrieved_context([hit(f"commit:{fix}", "commit"), unrelated], 3, triggered)
+    assert ("backend/payments/retry.py", "charge_with_retry") in triggered  # rank-1 fix: no code overlap needed
+    feature = shopfront.info.commit_by_prefix("feat(payments): friendly message for E4012")
+    triggered = set()
+    e._retrieved_context([hit(f"commit:{feature}", "commit"), unrelated], 3, triggered)
+    assert triggered == set()  # a rank-1 feature commit created code, it did not fix it
+    cfg = e.cfg.graveyard
+    saved = (cfg.commit_trigger_rank1, cfg.commit_trigger_score)
+    cfg.commit_trigger_rank1, cfg.commit_trigger_score = False, 2.0
+    try:
+        triggered = set()
+        e._retrieved_context([hit(f"commit:{fix}", "commit"), unrelated], 3, triggered)
+        assert triggered == set()
+    finally:
+        cfg.commit_trigger_rank1, cfg.commit_trigger_score = saved

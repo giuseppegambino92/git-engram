@@ -236,7 +236,7 @@ class HybridRetriever:
         graph_info: dict[int, tuple[float, str]] = {}
         seed_files: list[str] = []
         t2 = time.perf_counter()
-        if mode.graph:
+        if mode.graph and weights.get("graph", 0.0) > 0.0:  # a route may switch co-change expansion off entirely
             prelim = td_rrf(rankings, weights, cfg.rrf_k)
             seeds = [d for d, _, _ in prelim[: cfg.graph_seeds]]
             seed_files = [self.meta[d].path for d in seeds if d in self.meta and self.meta[d].path]

@@ -285,7 +285,8 @@ class Engram:
                     add_structural(fid, cfg.sibling_weight, f"other function in {path} ({sym})")
                 else:
                     add_structural(fid, 0.5, f"same file {path}")
-        ctx_symbols, ctx_files = self._retrieved_context(context_hits or [], cfg.context_hits)
+        triggered: set[tuple[str, str]] = set()
+        ctx_symbols, ctx_files = self._retrieved_context(context_hits or [], cfg.context_hits, triggered)
         if cfg.anchor == "file":  # legacy behaviour (first 3 hit paths, any function), kept for the ablation study
             for cf in [h.path for h in (context_hits or []) if h.path][: cfg.context_hits]:
                 if cf == path:
@@ -299,7 +300,11 @@ class Engram:
                 if fpath == path:
                     continue
                 if fsym and fsym != MODULE_SYMBOL:
-                    if any(p == fpath and same_symbol(fsym, s) for p, s in ctx_symbols):
+                    if any(p == fpath and same_symbol(fsym, s) for p, s in triggered):
+                        add_structural(
+                            int(r["failure_id"]), cfg.trigger_weight, f"top fix commit modified {fpath}::{fsym}"
+                        )
+                    elif any(p == fpath and same_symbol(fsym, s) for p, s in ctx_symbols):
                         add_structural(
                             int(r["failure_id"]), cfg.context_weight, f"targets retrieved symbol {fpath}::{fsym}"
                         )
@@ -364,14 +369,19 @@ class Engram:
             )
         return out
 
-    def _retrieved_context(self, hits: list[Hit], depth: int) -> tuple[set[tuple[str, str]], set[str]]:
+    def _retrieved_context(
+        self, hits: list[Hit], depth: int, triggered: set[tuple[str, str]] | None = None
+    ) -> tuple[set[tuple[str, str]], set[str]]:
         """Symbols and files the top retrieved hits point at, used to anchor graveyard failures.
 
         * Named symbols retrieved in the top ``depth`` hits count directly.
-        * A retrieved commit counts only if it passes the **commit-relevance gate**: its rerank score is at least
-          ``commit_gate`` x the best score in the top ``depth`` and it is not a bulk commit. Even then, a function it
-          modified only counts when that function is *also* among the top ``gate_code_hits`` code hits, so a sibling
-          function's fix commit can no longer credit the sibling's failure.
+        * A **load-bearing** commit (bugfix / security / revert) that is the **#1 result overall**, or clears
+          ``commit_trigger_score``, credits every function it modified directly (collected in ``triggered``): when
+          the top answer to the query *is* the fix, an attempt to re-break that function is relevant.
+        * Any other retrieved commit must pass the **commit-relevance gate**: rerank score at least ``commit_gate`` x
+          the best in the top ``depth``, and a function it modified only counts when that function is *also* among
+          the top ``gate_code_hits`` code hits, so a sibling function's fix commit cannot credit the sibling's failure.
+        * Bulk commits (more than ``max_commit_context_symbols`` symbols) never contribute.
         """
         cfg = self.cfg.graveyard
         top = hits[:depth]
@@ -394,19 +404,23 @@ class Engram:
                     symbols.add((h.path, h.symbol))
             elif h.kind == "file" and h.path:
                 files.add(h.path)
-            elif (
-                h.kind == "commit"
-                and cfg.commit_context
-                and (not cfg.commit_gating or strength(h) >= cfg.commit_gate * best)
-            ):
+            elif h.kind == "commit" and cfg.commit_context:
+                direct = (cfg.commit_trigger_rank1 and h is hits[0]) or strength(h) >= cfg.commit_trigger_score
+                if direct and cfg.trigger_intents:
+                    row = self.db.query_one("SELECT intent FROM commits WHERE hash = ?", (h.doc_key[7:],))
+                    direct = row is not None and row["intent"] in cfg.trigger_intents
+                if not direct and cfg.commit_gating and strength(h) < cfg.commit_gate * best:
+                    continue
                 rows = self.db.query("SELECT path, qualname FROM symbol_commits WHERE hash = ?", (h.doc_key[7:],))
                 if len(rows) > cfg.max_commit_context_symbols:
                     continue
                 for r in rows:
                     files.add(r["path"])
-                    gated_in = (r["path"], r["qualname"]) in code_top or not cfg.commit_gating
+                    gated_in = direct or (r["path"], r["qualname"]) in code_top or not cfg.commit_gating
                     if r["qualname"] != MODULE_SYMBOL and gated_in:
                         symbols.add((r["path"], r["qualname"]))
+                        if direct and triggered is not None:
+                            triggered.add((r["path"], r["qualname"]))
         return symbols, files
 
     def coupling_for(self, path: str, limit: int = 6) -> list[CouplingAlert]:
