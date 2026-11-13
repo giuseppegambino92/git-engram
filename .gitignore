@@ -1,0 +1,22 @@
+# virtualenvs & caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# build artifacts
+build/
+dist/
+*.egg-info/
+*.whl
+
+# git-engram local index (this repo dogfoods itself)
+.engram/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
