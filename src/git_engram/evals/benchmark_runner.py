@@ -43,7 +43,15 @@ from dataclasses import replace
 
 from ..retrieval.engine import BM25_ONLY, DENSE_F32, FULL, HYBRID, RetrievalMode
 from ..security.sanitizer import ContextFirewall
-from .dataset import DEV_QUERIES, TEST_QUERIES, TEST_V1_QUERIES, TEST_V2_QUERIES, TEST_V3_QUERIES, EvalQuery
+from .dataset import (
+    DEV_QUERIES,
+    TEST_QUERIES,
+    TEST_V1_QUERIES,
+    TEST_V2_QUERIES,
+    TEST_V3_QUERIES,
+    TEST_V4_QUERIES,
+    EvalQuery,
+)
 from .fixture import build_shopfront, populate_memory
 from .metrics import RankedDoc, first_ranks, ndcg_at, percentile, recall_at, reciprocal_rank
 
@@ -56,10 +64,13 @@ CONFIGS: list[tuple[str, RetrievalMode]] = [
 
 ABLATIONS: list[tuple[str, RetrievalMode]] = [
     ("git-engram (full)", FULL),
+    ("- code-first behavioral route", replace(FULL, name="no-behavioral")),
+    ("- named-symbol pinning", replace(FULL, name="no-pin")),
+    ("- commit-relevance gate (any top-3 commit)", replace(FULL, name="no-gate")),
+    ("file-level graveyard anchoring (legacy)", replace(FULL, name="file-anchor")),
     ("- commit slot budget (unconstrained top-k)", replace(FULL, name="no-slots", slot_budget=False)),
     ("- query-adaptive router (fixed weights)", replace(FULL, name="no-router", route=False)),
     ("- exact-identifier rerank profile", replace(FULL, name="no-exact-profile")),
-    ("file-level graveyard anchoring (legacy)", replace(FULL, name="file-anchor")),
     ("+ MMR file diversity (opt-in)", replace(FULL, name="mmr", diversify=True)),
     ("- co-change graph path", replace(FULL, name="no-graph", graph=False)),
     ("- interaction reranker", replace(FULL, name="no-rerank", rerank=False)),
@@ -71,6 +82,9 @@ ABLATIONS: list[tuple[str, RetrievalMode]] = [
 ABLATION_OVERRIDES: dict[str, dict[str, object]] = {
     "file-anchor": {"graveyard.anchor": "file"},
     "no-exact-profile": {"router.exact_intent": "neutral"},
+    "no-behavioral": {"router.behavioral": False},
+    "no-pin": {"retrieval.pin_classes": []},
+    "no-gate": {"graveyard.commit_gating": False},
 }
 
 
@@ -82,6 +96,10 @@ def _apply_overrides(engine: Engram, overrides: dict[str, object]) -> dict[str, 
         if key == "router.exact_intent":
             previous[key] = router.RERANK_INTENT["exact"]
             router.RERANK_INTENT["exact"] = value
+            continue
+        if key == "router.behavioral":
+            previous[key] = router.ENABLE_BEHAVIORAL
+            router.ENABLE_BEHAVIORAL = value
             continue
         section, attr = key.split(".", 1)
         target = getattr(engine.cfg, section)
@@ -399,19 +417,19 @@ def render_markdown(
         f"{meta['documents']} indexed documents, {meta['failures']} graveyard failures. Hardware: {meta['machine']}, "
         f"Python {meta['python']}. Latency = warm, single-thread wall time per query over {meta['repeats']} repeats.",
         "",
-        f"### Held-out test split v3 ({len(TEST_V3_QUERIES)} unseen queries: 6 causal, 6 regression, "
+        f"### Held-out test split v4 ({len(TEST_V4_QUERIES)} unseen queries: 6 causal, 6 behavioral, 6 regression, "
         "6 coupled-file, 6 exact-identifier)",
         "",
-        "Committed (with an inventory fixture extension) before symbol-level graveyard anchoring, the MMR removal and "
-        "exact-route tuning existed; never used to choose any weight or threshold. Includes sibling-symbol queries "
-        "that measure graveyard false alarms.",
+        "Committed (with a rate-limit / signed-webhook fixture extension) before code-first routing and "
+        "commit-relevance gating existed; never used to choose any weight or threshold. Includes sibling-symbol "
+        "queries that measure graveyard false alarms.",
         "",
         *_main_table(results),
         "",
         *_category_table(results),
     ]
     if routes:
-        lines += ["", "Router classes on the v3 split: " + ", ".join(f"{k} {v}" for k, v in sorted(routes.items()))]
+        lines += ["", "Router classes on the v4 split: " + ", ".join(f"{k} {v}" for k, v in sorted(routes.items()))]
     for title, note, rows in retired or []:
         lines += ["", f"### {title}", "", note, "", *_main_table(rows), "", *_category_table(rows)]
     if dev_results:
@@ -430,8 +448,8 @@ def render_markdown(
             "",
             "### Ablation study (git-engram minus one component)",
             "",
-            "| Variant | nDCG@5 dev | nDCG@5 v3 | Recall@5 v3 | MRR v3 | Co-Change v3 | Neg. Hit v3 "
-            "| False Alarms v3 |",
+            "| Variant | nDCG@5 dev | nDCG@5 v4 | Recall@5 v4 | MRR v4 | Co-Change v4 | Neg. Hit v4 "
+            "| False Alarms v4 |",
             "|---|---:|---:|---:|---:|---:|---:|---:|",
         ]
         for dev, test in ablations:
@@ -490,14 +508,15 @@ def run_benchmark(
         stats = engine.index()
         failure_ids = populate_memory(engine, info)
         build_s = time.perf_counter() - t0
-        results = evaluate(engine, info, failure_ids, repeats, queries=TEST_V3_QUERIES)
+        results = evaluate(engine, info, failure_ids, repeats, queries=TEST_V4_QUERIES)
+        v3_results = evaluate(engine, info, failure_ids, 1, queries=TEST_V3_QUERIES)
         v1_results = evaluate(engine, info, failure_ids, 1, queries=TEST_V1_QUERIES)
         v2_results = evaluate(engine, info, failure_ids, 1, queries=TEST_V2_QUERIES)
         dev_results = evaluate(engine, info, failure_ids, 1, queries=DEV_QUERIES)
         ablations = list(
             zip(
                 evaluate(engine, info, failure_ids, 1, ABLATIONS, queries=DEV_QUERIES),
-                evaluate(engine, info, failure_ids, 1, ABLATIONS, queries=TEST_V3_QUERIES),
+                evaluate(engine, info, failure_ids, 1, ABLATIONS, queries=TEST_V4_QUERIES),
                 strict=True,
             )
         )
@@ -505,7 +524,7 @@ def run_benchmark(
 
         from ..retrieval.router import classify
 
-        router_classes = dict(Counter(classify(_resolve_query(q, info)).klass for q in TEST_V3_QUERIES))
+        router_classes = dict(Counter(classify(_resolve_query(q, info)).klass for q in TEST_V4_QUERIES))
         preflight = preflight_benchmark(engine)
         scale_rows = scale_benchmark(engine, sizes) if scale else []
         sec = security_benchmark(engine.firewall)
@@ -522,6 +541,11 @@ def run_benchmark(
             "router_classes": router_classes,
         }
         retired = [
+            (
+                f"Retired held-out split v3 ({len(TEST_V3_QUERIES)} queries)",
+                "Unseen when first reported; its causal regression and false alarms were then diagnosed.",
+                v3_results,
+            ),
             (
                 f"Retired held-out split v2 ({len(TEST_V2_QUERIES)} queries)",
                 "Unseen when first reported; its false alarms were then diagnosed, so it is no longer held-out.",
@@ -540,6 +564,7 @@ def run_benchmark(
             "results_dev": [r.__dict__ for r in dev_results],
             "results_v1_retired": [r.__dict__ for r in v1_results],
             "results_v2_retired": [r.__dict__ for r in v2_results],
+            "results_v3_retired": [r.__dict__ for r in v3_results],
             "ablations": [
                 {
                     "name": t.name,

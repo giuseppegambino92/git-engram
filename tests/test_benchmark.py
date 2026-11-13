@@ -40,16 +40,19 @@ def test_benchmark_end_to_end(tmp_path):
     for name, r in dev.items():
         assert ours["ndcg5"] >= r["ndcg5"], name
         assert ours["cochange"] >= r["cochange"], name
-    assert ours["neg_hit"] >= 0.8
+    # Graveyard contract on dev: the commit-relevance gate trades some recall (80% -> 73%) for precision (4% -> 0%);
+    # guard both sides so neither can regress silently.
+    assert ours["neg_hit"] >= 0.7 and ours["false_alarm"] <= 0.05
     # Held-out split: only structural checks here (its numbers are reported, never asserted/tuned against).
     test = {r["name"]: r for r in payload["results"]}
-    assert set(test) == set(dev) and all(len(r["per_query"]) == 24 for r in test.values())
-    assert all(len(r["per_query"]) == 24 for r in payload["results_v1_retired"] + payload["results_v2_retired"])
+    assert set(test) == set(dev) and all(len(r["per_query"]) == 30 for r in test.values())
+    retired = payload["results_v1_retired"] + payload["results_v2_retired"] + payload["results_v3_retired"]
+    assert all(len(r["per_query"]) == 24 for r in retired)
     assert test["**git-engram** (full)"]["p95_ms"] < 50
     assert payload["preflight"]["p50_ms"] < 20
     assert payload["scale"][0]["recall@10_same_dim"] > 0.8
     md = payload["markdown"]
-    assert "Held-out test split v3" in md and "Retired held-out split v2" in md and "Retired held-out split v1" in md
+    assert "Held-out test split v4" in md and "Retired held-out split v3" in md and "Retired held-out split v1" in md
     assert "Dev / calibration" in md and "file-level graveyard anchoring" in md and "MMR file diversity (opt-in)" in md
 
 
@@ -83,3 +86,26 @@ def test_splits_are_disjoint_and_ground_truth_exists(shopfront):
             assert q.coupled in paths
         for tag in q.failures + q.acceptable:
             assert tag in shopfront.failure_ids
+
+
+def test_no_test_file_contains_held_out_query_text():
+    """Held-out queries may only be executed by the benchmark runner, never by unit tests.
+
+    Multi-word held-out queries must not appear in any test file at all. One-word queries (identifiers such as
+    ``sign_payload`` or ``SEC-118``) legitimately appear in tests, so for those we only forbid passing them as the
+    query string of search / retrieve / preflight.
+    """
+    import re
+    from pathlib import Path
+
+    from git_engram.evals.dataset import TEST_V1_QUERIES, TEST_V2_QUERIES, TEST_V3_QUERIES, TEST_V4_QUERIES
+
+    held_out = {q.text for q in TEST_V1_QUERIES + TEST_V2_QUERIES + TEST_V3_QUERIES + TEST_V4_QUERIES}
+    for path in Path(__file__).parent.glob("*.py"):
+        source = path.read_text(encoding="utf-8")
+        for text in held_out:
+            if len(text.split()) >= 3:
+                assert text not in source, (path.name, text)
+            else:
+                call = re.compile(r"\b(search|retrieve|preflight)\(\s*[\"']" + re.escape(text) + r"[\"']")
+                assert not call.search(source), (path.name, text)

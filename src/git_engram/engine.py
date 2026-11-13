@@ -365,25 +365,47 @@ class Engram:
         return out
 
     def _retrieved_context(self, hits: list[Hit], depth: int) -> tuple[set[tuple[str, str]], set[str]]:
-        """Symbols and files the top retrieved hits point at. A focused commit hit contributes the symbols it modified;
-        bulk commits (more than ``max_commit_context_symbols`` symbols, e.g. an initial import) contribute nothing."""
+        """Symbols and files the top retrieved hits point at, used to anchor graveyard failures.
+
+        * Named symbols retrieved in the top ``depth`` hits count directly.
+        * A retrieved commit counts only if it passes the **commit-relevance gate**: its rerank score is at least
+          ``commit_gate`` x the best score in the top ``depth`` and it is not a bulk commit. Even then, a function it
+          modified only counts when that function is *also* among the top ``gate_code_hits`` code hits, so a sibling
+          function's fix commit can no longer credit the sibling's failure.
+        """
         cfg = self.cfg.graveyard
+        top = hits[:depth]
+        code_top = {
+            (h.path, h.symbol)
+            for h in hits[: cfg.gate_code_hits]
+            if h.kind == "symbol" and h.path and h.symbol and h.symbol != MODULE_SYMBOL
+        }
         symbols: set[tuple[str, str]] = set()
         files: set[str] = set()
-        for h in hits[:depth]:
+
+        def strength(h: Hit) -> float:
+            return h.rerank_score if h.rerank_score is not None else h.score
+
+        best = max((strength(h) for h in top), default=0.0)
+        for h in top:
             if h.kind == "symbol" and h.path and h.symbol:
                 files.add(h.path)
                 if h.symbol != MODULE_SYMBOL:
                     symbols.add((h.path, h.symbol))
             elif h.kind == "file" and h.path:
                 files.add(h.path)
-            elif h.kind == "commit" and cfg.commit_context:
+            elif (
+                h.kind == "commit"
+                and cfg.commit_context
+                and (not cfg.commit_gating or strength(h) >= cfg.commit_gate * best)
+            ):
                 rows = self.db.query("SELECT path, qualname FROM symbol_commits WHERE hash = ?", (h.doc_key[7:],))
                 if len(rows) > cfg.max_commit_context_symbols:
                     continue
                 for r in rows:
                     files.add(r["path"])
-                    if r["qualname"] != MODULE_SYMBOL:
+                    gated_in = (r["path"], r["qualname"]) in code_top or not cfg.commit_gating
+                    if r["qualname"] != MODULE_SYMBOL and gated_in:
                         symbols.add((r["path"], r["qualname"]))
         return symbols, files
 

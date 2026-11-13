@@ -112,9 +112,14 @@ def test_slot_budget_caps_commits_and_attaches_them_to_symbols(shopfront):
     assert schema.attached_commits and all("hash" in c and "subject" in c for c in schema.attached_commits)
 
     why = e.retriever.retrieve("why does TTLCache.get take the lock even though it only reads", 8, FULL)
-    assert why.profile.klass == "causal"
-    assert sum(h.kind == "commit" for h in why.hits[:5]) <= e.cfg.retrieval.commit_slots["causal"]
-    assert any(h.kind == "commit" for h in why.hits[:5])  # causal queries keep their commits
+    assert why.profile.klass == "behavioral"  # names a function, no history cue -> code-first
+    assert why.hits[0].doc_key == "sym:backend/cache/lru.py::TTLCache.get"
+    assert sum(h.kind == "commit" for h in why.hits[:5]) <= e.cfg.retrieval.commit_slots["behavioral"]
+    assert any(h.kind == "commit" for h in why.hits[:5])  # the load-bearing fix commit stays visible
+    hist = e.retriever.retrieve("why did the TTLCache.get lock get restored in the end", 8, FULL)
+    assert hist.profile.klass == "causal"
+    assert sum(h.kind == "commit" for h in hist.hits[:5]) <= e.cfg.retrieval.commit_slots["causal"]
+    assert any(h.kind == "commit" for h in hist.hits[:5])
 
 
 def test_slot_budget_defers_instead_of_dropping(shopfront):
@@ -152,23 +157,80 @@ def test_bulk_commits_contribute_no_context(shopfront):
     from git_engram.models import Hit
 
     e = shopfront.engine
+
+    def hit(key, kind, path=None, symbol=None, score=1.0):
+        return Hit(
+            doc_id=0,
+            doc_key=key,
+            kind=kind,
+            path=path,
+            symbol=symbol,
+            title="",
+            snippet="",
+            ts=None,
+            score=score,
+            rerank_score=score,
+        )
+
     bootstrap = shopfront.info.commit_by_prefix("feat: bootstrap shopfront")
-    hit = Hit(
-        doc_id=0,
-        doc_key=f"commit:{bootstrap}",
-        kind="commit",
-        path=None,
-        symbol=None,
-        title="",
-        snippet="",
-        ts=None,
-        score=0.0,
-    )
-    assert e._retrieved_context([hit], 3) == (set(), set())
+    assert e._retrieved_context([hit(f"commit:{bootstrap}", "commit")], 3) == (set(), set())
     focused = shopfront.info.commit_by_prefix("fix(auth): tolerate 30s clock skew")
-    hit.doc_key = f"commit:{focused}"
-    symbols, _ = e._retrieved_context([hit], 3)
+    code = hit(
+        "sym:backend/auth/token.py::is_token_expired", "symbol", "backend/auth/token.py", "is_token_expired", 0.5
+    )
+    symbols, _ = e._retrieved_context([hit(f"commit:{focused}", "commit"), code], 3)
     assert ("backend/auth/token.py", "is_token_expired") in symbols
+
+
+def test_commit_relevance_gate_blocks_sibling_commits(shopfront):
+    """A sibling function's fix commit must not credit that sibling's failure (TTLCache.set vs the get() revert)."""
+    from git_engram.models import Hit
+
+    e = shopfront.engine
+    revert = shopfront.info.commit_by_prefix('Revert "perf(cache)')
+
+    def hit(key, kind, path=None, symbol=None, score=1.0):
+        return Hit(
+            doc_id=0,
+            doc_key=key,
+            kind=kind,
+            path=path,
+            symbol=symbol,
+            title="",
+            snippet="",
+            ts=None,
+            score=score,
+            rerank_score=score,
+        )
+
+    asked = hit("sym:backend/cache/lru.py::TTLCache.set", "symbol", "backend/cache/lru.py", "TTLCache.set", 1.0)
+    hits = [asked, hit(f"commit:{revert}", "commit", score=0.95)]
+    symbols, _ = e._retrieved_context(hits, 3)
+    assert ("backend/cache/lru.py", "TTLCache.get") not in symbols  # get() is not among the top code hits
+    e.cfg.graveyard.commit_gating = False
+    try:
+        ungated, _ = e._retrieved_context(hits, 3)
+    finally:
+        e.cfg.graveyard.commit_gating = True
+    assert ("backend/cache/lru.py", "TTLCache.get") in ungated
+    weak = [
+        asked,
+        hit(f"commit:{revert}", "commit", score=0.2),
+        hit("sym:backend/cache/lru.py::TTLCache.get", "symbol", "backend/cache/lru.py", "TTLCache.get", 0.9),
+    ]
+    symbols, _ = e._retrieved_context(weak, 3)
+    assert ("backend/cache/lru.py", "TTLCache.get") in symbols  # still credited through the direct symbol hit
+
+
+def test_named_symbol_is_pinned_for_code_first_queries(shopfront):
+    from git_engram.retrieval.engine import FULL
+
+    r = shopfront.engine.retriever
+    res = r.retrieve("why does TTLCache.set evict entries when it is full", 8, FULL)
+    assert res.profile.klass == "behavioral"
+    assert res.hits[0].doc_key == "sym:backend/cache/lru.py::TTLCache.set"
+    assert r.named_symbols("why does the cache get slow") == []  # generic words never pin
+    assert r.named_symbols("look at sign_payload") == [r.by_key["sym:backend/auth/token.py::sign_payload"]]
 
 
 def test_preflight_sibling_vs_file_level(shopfront):

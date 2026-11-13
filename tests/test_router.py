@@ -7,6 +7,10 @@ from git_engram.retrieval.router import WEIGHTS, classify
     "query,klass",
     [
         ("why does the importer skip empty rows", "causal"),
+        ("why does parse_invoice strip trailing zeros", "behavioral"),
+        ("why is Invoice.total computed lazily", "behavioral"),
+        ("why was parse_invoice changed to strip zeros", "causal"),  # history cue wins
+        ("why did the InvoiceCache lock get reverted", "causal"),
         ("what is the reason we pin numpy below 2", "causal"),
         ("explain the history of the retry policy", "causal"),
         ("add a timeout parameter to fetch_user", "change"),

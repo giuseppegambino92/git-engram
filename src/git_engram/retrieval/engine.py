@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import re
 import time
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
@@ -18,7 +19,10 @@ from .fusion import td_rrf
 from .graph import CoChangeGraph
 from .lexical import bm25_search
 from .reranker import Candidate, Reranker
+from ..text.analyzer import STOPWORDS, is_rare_token
 from .router import QueryProfile, classify
+
+_IDENT = re.compile(r"[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*")
 
 
 @dataclass(frozen=True)
@@ -117,12 +121,17 @@ class HybridRetriever:
         self.meta: dict[int, DocMeta] = {}
         self.by_key: dict[str, int] = {}
         self.by_path: dict[str, list[int]] = defaultdict(list)
+        self.sym_by_qual: dict[str, list[int]] = defaultdict(list)
+        self.sym_by_name: dict[str, list[int]] = defaultdict(list)
         for r in db.query("SELECT id, doc_key, kind, path, symbol, title, ts FROM documents"):
             m = DocMeta(r["kind"], r["path"], r["symbol"], r["title"], r["ts"], r["doc_key"])
             self.meta[int(r["id"])] = m
             self.by_key[m.doc_key] = int(r["id"])
             if m.path and m.kind in {"symbol", "file"}:
                 self.by_path[m.path].append(int(r["id"]))
+            if m.kind == "symbol" and m.symbol and m.symbol != "<module>":
+                self.sym_by_qual[m.symbol].append(int(r["id"]))
+                self.sym_by_name[m.symbol.rsplit(".", 1)[-1]].append(int(r["id"]))
 
     def register(
         self, doc_id: int, doc_key: str, kind: str, path: str | None, symbol: str | None, title: str, ts: float | None
@@ -287,6 +296,8 @@ class HybridRetriever:
             order = head + [d for d, _, _ in fused[cfg.rerank_top_n :]]
         if mode.slot_budget:
             order = self._slot_budget(order, profile.klass if profile else "general")
+            if profile is not None and profile.klass in cfg.pin_classes:
+                order = self._pin_named_symbol(order, query)
         timings["rerank"] = (time.perf_counter() - t4) * 1000
 
         fused_map = {d: (s, rf) for d, s, rf in fused}
@@ -295,7 +306,7 @@ class HybridRetriever:
         hits: list[Hit] = []
         for d in selected:
             m = self.meta[d]
-            fs, rf = fused_map[d]
+            fs, rf = fused_map.get(d, (0.0, 1.0))  # a pinned symbol may come from outside the fused list
             br = bm25_rank.get(d)
             vr = vec_rank.get(d)
             gi = graph_info.get(d)
@@ -347,6 +358,32 @@ class HybridRetriever:
                 used += 1
             head.append(d)
         return head + deferred + order[i:]
+
+    def named_symbols(self, query: str) -> list[int]:
+        """Symbol docs the query names exactly: a qualified name (``TTLCache.set``) or a distinctive identifier
+        (snake_case, camelCase, PascalCase, >= 4 chars). Generic words never match."""
+        found: list[int] = []
+        for tok in _IDENT.findall(query):
+            if len(tok) < 4 or tok.lower() in STOPWORDS:
+                continue
+            if not ("." in tok or is_rare_token(tok) or tok[0].isupper()):
+                continue
+            cands = self.sym_by_qual.get(tok) or ([] if "." in tok else self.sym_by_name.get(tok, []))
+            found.extend(d for d in cands if d not in found)
+        return found
+
+    def _pin_named_symbol(self, order: list[int], query: str) -> list[int]:
+        """Code-first guarantee: the best-ranked symbol the query names sits at ``pin_position`` or higher."""
+        named = self.named_symbols(query)
+        if not named:
+            return order
+        rank = {d: i for i, d in enumerate(order)}
+        target = min(named, key=lambda d: rank.get(d, len(order)))
+        slot = max(0, self.cfg.pin_position - 1)
+        if rank.get(target, len(order)) <= slot:
+            return order
+        rest = [d for d in order if d != target]
+        return rest[:slot] + [target] + rest[slot:]
 
     def _attach_commits(self, hits: list[Hit], candidates: list[int]) -> None:
         """Parent-symbol attachment: each code hit carries the commits that modified it, preferring commits that were

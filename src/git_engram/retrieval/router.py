@@ -5,6 +5,9 @@ Different questions need different evidence:
 ==========  ==========================================================  ==============================
 class       trigger (first match wins)                                    what it changes
 ==========  ==========================================================  ==============================
+behavioral  "why does/is <named function> ..." with no history cue        code-first: the named symbol is
+                                                                          pinned to rank 1, at most 2
+                                                                          commits in the top 5
 causal      "why / reason / purpose / motivation / what changed ..."      graph down-weighted; reranker
                                                                           prefers commits and failures
 change      imperative "add / change / rename / tune / raise ..."         graph up: hidden co-changes
@@ -32,6 +35,14 @@ _CAUSAL = re.compile(
     r"how\s+come|history\s+of|introduced|explain)\b",
     re.I,
 )
+_BEHAVIOR = re.compile(r"\bwhy\s+(?:does|do|is|are|must|would|should|can)\b", re.I)
+_HISTORY = re.compile(
+    r"\b(was|were|did|has|have|had|got|change[ds]?|changing|revert\w*|broke|broken|break|introduced|added|removed|"
+    r"switched|replaced|put\s+back|doubled|increased|raised|lowered|shortened|led\s+to|history|regress\w*|"
+    r"fix(?:ed|es)?)\b",
+    re.I,
+)
+_DOTTED = re.compile(r"\b[A-Za-z_]\w*\.[A-Za-z_]\w*\b")
 _CHANGE = re.compile(
     r"^\s*(?:please\s+)?(add|change|modify|update|rename|remove|delete|refactor|tune|raise|lower|increase|"
     r"decrease|extend|implement|move|replace|edit|make|redesign|show|support|migrate|bump|split)\b",
@@ -53,12 +64,23 @@ _PATH = re.compile(r"\b[\w.-]+/[\w./-]+|\b\w+\.(?:py|ts|tsx|js|go|rs|java|sql|ya
 
 WEIGHTS: dict[str, dict[str, float]] = {
     "causal": {"bm25": 1.0, "vec": 1.0, "graph": 0.5},
+    "behavioral": {"bm25": 1.2, "vec": 1.0, "graph": 0.3},
     "exact": {"bm25": 2.0, "vec": 0.4, "graph": 0.2},
     "change": {"bm25": 1.0, "vec": 1.0, "graph": 1.3},
     "symptom": {"bm25": 1.2, "vec": 1.0, "graph": 0.3},
     "general": {"bm25": 1.0, "vec": 1.0, "graph": 1.0},
 }
-RERANK_INTENT = {"causal": "causal", "symptom": "causal", "change": "change", "exact": "exact", "general": "auto"}
+RERANK_INTENT = {
+    "causal": "causal",
+    "behavioral": "neutral",  # code-first comes from named-symbol pinning; a relevant fix commit may still rank
+    "symptom": "causal",
+    "change": "change",
+    "exact": "exact",
+    "general": "auto",
+}
+
+
+ENABLE_BEHAVIORAL = True  # switch used by the ablation study
 
 
 @dataclass(frozen=True)
@@ -71,7 +93,16 @@ class QueryProfile:
 
 def query_features(query: str) -> dict[str, bool]:
     tokens = [t for t in raw_tokens(query) if t.lower() not in STOPWORDS]
+    words = raw_tokens(query)
+    named = (
+        any(is_rare_token(t) for t in words)
+        or bool(_DOTTED.search(query))
+        or any(t[0].isupper() and t.lower() not in STOPWORDS for t in words[1:])
+    )
     return {
+        "behavior": bool(_BEHAVIOR.search(query)),
+        "history": bool(_HISTORY.search(query)),
+        "named_symbol": named,
         "causal": bool(_CAUSAL.search(query)),
         "change": bool(_CHANGE.search(query)),
         "symptom": bool(_SYMPTOM.search(query)),
@@ -88,7 +119,9 @@ def query_features(query: str) -> dict[str, bool]:
 def classify(query: str) -> QueryProfile:
     f = query_features(query)
     strong_exact = f["hash"] or f["error_code"] or f["exception"] or f["quoted"] or f["path"]
-    if f["causal"]:
+    if ENABLE_BEHAVIORAL and f["causal"] and f["behavior"] and f["named_symbol"] and not f["history"]:
+        klass = "behavioral"  # "why does <function> do X": answered by the code, possibly plus its fix commit
+    elif f["causal"]:
         klass = "causal"
     elif f["change"]:  # imperative change request ("add X to schema.sql") even if it names a path/identifier
         klass = "change"

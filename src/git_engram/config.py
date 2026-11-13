@@ -43,8 +43,11 @@ class RetrievalConfig(BaseModel):
     # Slot budget: at most this many commit capsules inside the first ``slot_window`` results, per router class.
     slot_window: int = 5
     commit_slots: dict[str, int] = Field(
-        default_factory=lambda: {"causal": 3, "symptom": 1, "change": 0, "exact": 2, "general": 2}
+        default_factory=lambda: {"causal": 3, "behavioral": 2, "symptom": 1, "change": 0, "exact": 2, "general": 2}
     )
+    # Named-symbol pinning: a symbol the query names exactly is guaranteed a slot at or above ``pin_position``.
+    pin_position: int = 1
+    pin_classes: list[str] = Field(default_factory=lambda: ["behavioral", "exact", "change"])
     attach_commits: int = 2
     rerank: bool = True
     cross_encoder_dir: str | None = None
@@ -114,6 +117,11 @@ class GraveyardConfig(BaseModel):
     context_hits: int = 3
     sibling_weight: float = 0.25
     commit_context: bool = True
+    # Commit-relevance gate: a retrieved commit may credit a failure only if its rerank score is at least this
+    # fraction of the best one AND the failure's function is also among the top ``gate_code_hits`` code hits.
+    commit_gating: bool = True
+    commit_gate: float = 0.9
+    gate_code_hits: int = 5
     anchor: str = "symbol"  # "symbol" (default) or "file" (legacy: any failure in a top-3 file gets credit)
     max_commit_context_symbols: int = 8
     textual_weight: float = 0.60
