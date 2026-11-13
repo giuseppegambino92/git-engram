@@ -10,18 +10,19 @@ Relevance targets:
 overlap with the query); ``acceptable`` lists failures that are relevant enough not to count as false alarms.
 Queries are paraphrased: they deliberately avoid copying commit-message wording.
 
-Four splits:
+Five splits:
 
-* ``DEV_QUERIES`` (40) -- the calibration split (5 categories x 8, including behavioral "why" queries).
-  Every weight, threshold and design choice in the engine was made
-  while looking at these, so their scores are optimistic by construction.
-* ``TEST_V1_QUERIES`` (24) -- the first held-out split, committed before the query router. Its results were
-  later inspected to diagnose commit-capsule crowding, so it is **retired**: still reported, no longer unseen.
-* ``TEST_V2_QUERIES`` (24) -- second held-out split, committed with a fixture extension before the slot-budget
-  fix. Its false-alarm results were then diagnosed, so it is **retired** too.
-* ``TEST_V3_QUERIES`` (24) -- the current held-out split, committed together with an inventory-reservations fixture
-  extension *before* symbol-level graveyard anchoring, the MMR removal and exact-route tuning existed. It includes
-  sibling-symbol queries (a different function in a file that has a recorded failure) to measure false alarms.
+* ``DEV_QUERIES`` (40) -- the calibration split (5 categories x 8, including behavioral "why" queries). Every
+  weight, threshold and design choice in the engine was made while looking at these: scores are optimistic.
+* ``TEST_V1_QUERIES`` (24) -- **retired**. Committed before the query router; later used to diagnose
+  commit-capsule crowding.
+* ``TEST_V2_QUERIES`` (24) -- **retired**. Committed before the commit slot budget; later used to diagnose
+  graveyard false alarms.
+* ``TEST_V3_QUERIES`` (24) -- **retired**. Committed before symbol-level anchoring, the MMR removal and exact-route
+  tuning; later used to diagnose the causal-query regression and sibling-commit false alarms. Contains
+  sibling-symbol queries.
+* ``TEST_V4_QUERIES`` (30) -- the current held-out split (6 per category, including behavioral), committed with a
+  rate-limiting / signed-webhook fixture extension *before* code-first routing and commit-relevance gating existed.
   Report these as the headline numbers.
 """
 
@@ -791,6 +792,210 @@ TEST_V3_QUERIES: list[EvalQuery] = [
     ),
 ]
 
-TEST_QUERIES = TEST_V3_QUERIES  # current held-out split
+C_MONOTONIC = "commit:fix(api): refill rate-limit buckets from the monotonic clock"
+C_LIMIT120 = "commit:feat(api): raise the public rate limit to 120"
+C_RETRY_AFTER = "commit:fix(web): honour Retry-After after ERR_RATE_LIMITED"
+C_WEBHOOK_REPLAY = "commit:fix(security): refuse webhook signatures older than five minutes"
+REFILL = "sym:backend/api/rate_limit.py::TokenBucket.refill"
+ALLOW = "sym:backend/api/rate_limit.py::TokenBucket.allow"
+BUCKET = "sym:backend/api/rate_limit.py::TokenBucket"
+RETRY_AFTER = "sym:backend/api/rate_limit.py::retry_after_seconds"
+SIGN_WEBHOOK = "sym:backend/webhooks/signing.py::sign_webhook"
+VERIFY_WEBHOOK = "sym:backend/webhooks/signing.py::verify_webhook"
+RATE_FILE = "file:backend/api/rate_limit.py"
+NGINX_FILE = "file:deploy/nginx/limits.conf"
+HTTP_FILE = "file:web/src/api/http.ts"
+
+# Sibling probes (no warning expected): beh-01 retry_after_seconds and err-04 TokenBucket vs the TokenBucket.refill
+# failure, beh-03 sign_webhook vs the verify_webhook failure, beh-06 Cart vs the CartService.checkout failure.
+TEST_V4_QUERIES: list[EvalQuery] = [
+    # -------------------------------------------------------- causal "why" (history)
+    EvalQuery(
+        "v4-why-01",
+        "causal",
+        "why was the rate limiter switched to time.monotonic",
+        {C_MONOTONIC: 2, REFILL: 1},
+        ("F12-wallclock",),
+    ),
+    EvalQuery(
+        "v4-why-02",
+        "causal",
+        "why are webhook signatures older than five minutes refused",
+        {C_WEBHOOK_REPLAY: 2, VERIFY_WEBHOOK: 1},
+        ("F13-webhook-replay",),
+    ),
+    EvalQuery(
+        "v4-why-03",
+        "causal",
+        "why was the public API request limit doubled",
+        {C_LIMIT120: 2, RATE_FILE: 1},
+        acceptable=("F12-wallclock",),
+    ),
+    EvalQuery(
+        "v4-why-04", "causal", "what led to the web client waiting for Retry-After", {C_RETRY_AFTER: 2, HTTP_FILE: 1}
+    ),
+    EvalQuery(
+        "v4-why-05",
+        "causal",
+        "why did stock reservations get shortened from 15 to 10 minutes",
+        {C_TTL10: 2, RESERVATIONS_FILE: 1},
+        acceptable=("F11-ttl-mismatch",),
+    ),
+    EvalQuery(
+        "v4-why-06",
+        "causal",
+        "why was the lock in TTLCache.get put back",
+        {C_REVERT: 2, CACHE_GET: 1},
+        ("F6-cache-lock",),
+    ),
+    # ------------------------------------------- behavioral "why" (answered by code)
+    EvalQuery("v4-beh-01", "behavioral", "why does retry_after_seconds round up", {RETRY_AFTER: 2}),
+    EvalQuery(
+        "v4-beh-02",
+        "behavioral",
+        "why does TokenBucket.allow call refill before spending tokens",
+        {ALLOW: 2, REFILL: 1},
+        acceptable=("F12-wallclock",),
+    ),
+    EvalQuery(
+        "v4-beh-03",
+        "behavioral",
+        "why does sign_webhook include the timestamp in the signed message",
+        {SIGN_WEBHOOK: 2},
+    ),
+    EvalQuery(
+        "v4-beh-04",
+        "behavioral",
+        "why does list_products cut the result down to limit",
+        {"sym:backend/catalog/products.py::list_products": 2},
+    ),
+    EvalQuery("v4-beh-05", "behavioral", "why does render_receipt format the total with two decimals", {RENDER: 2}),
+    EvalQuery(
+        "v4-beh-06", "behavioral", "why does a new Cart start at version 0", {"sym:backend/cart/service.py::Cart": 2}
+    ),
+    # ------------------------------------------------------------- bug / regression
+    EvalQuery(
+        "v4-bug-01",
+        "regression",
+        "every API client got throttled for forty minutes after the server clock jumped",
+        {C_MONOTONIC: 2, REFILL: 1},
+        ("F12-wallclock",),
+    ),
+    EvalQuery(
+        "v4-bug-02",
+        "regression",
+        "an attacker replayed a captured webhook delivery hours later",
+        {C_WEBHOOK_REPLAY: 2, VERIFY_WEBHOOK: 1},
+        ("F13-webhook-replay",),
+    ),
+    EvalQuery(
+        "v4-bug-03",
+        "regression",
+        "the browser kept retrying instantly after being rate limited",
+        {C_RETRY_AFTER: 2, HTTP_FILE: 1},
+    ),
+    EvalQuery(
+        "v4-bug-04",
+        "regression",
+        "the last sneaker in stock was reserved by two people at once",
+        {C_OVERSELL: 2, RESERVE: 1},
+        ("F10-reserve-lock",),
+    ),
+    EvalQuery(
+        "v4-bug-05",
+        "regression",
+        "products showed as sold out although nobody had bought them",
+        {C_RELEASE: 2, RELEASE: 1},
+        acceptable=("F11-ttl-mismatch",),
+    ),
+    EvalQuery(
+        "v4-bug-06",
+        "regression",
+        "tax on some orders came out a cent higher than finance expected",
+        {C_BANKER: 2, TAX: 1},
+        ("F4-rounding",),
+    ),
+    # ------------------------------------------------------------------ coupled files
+    EvalQuery(
+        "v4-cpl-01",
+        "coupled",
+        "raise the per-client request budget in the rate limiter",
+        {RATE_FILE: 2, NGINX_FILE: 2},
+        coupled="deploy/nginx/limits.conf",
+        acceptable=("F12-wallclock",),
+    ),
+    EvalQuery(
+        "v4-cpl-02",
+        "coupled",
+        "change the limit_req rate in the nginx config",
+        {NGINX_FILE: 2, RATE_FILE: 2},
+        coupled="backend/api/rate_limit.py",
+        acceptable=("F12-wallclock",),
+    ),
+    EvalQuery(
+        "v4-cpl-03",
+        "coupled",
+        "make the reservation countdown hook duration configurable",
+        {COUNTDOWN: 2, RESERVATIONS_FILE: 2},
+        coupled="backend/inventory/reservations.py",
+        acceptable=("F11-ttl-mismatch",),
+    ),
+    EvalQuery(
+        "v4-cpl-04",
+        "coupled",
+        "lower base_ms in the worker retry config",
+        {"file:worker/config/worker.yaml": 2, BACKOFF: 2},
+        coupled="worker/pkg/queue/backoff.go",
+        acceptable=("F5-ack-order",),
+    ),
+    EvalQuery(
+        "v4-cpl-05",
+        "coupled",
+        "rename the subtotal field of the order API response",
+        {ORDER_SCHEMA: 2, "file:mobile/src/parsers/orderParser.ts": 2, "file:web/src/api/orderTypes.ts": 1},
+        coupled="mobile/src/parsers/orderParser.ts",
+        acceptable=("F7-parser-dollars",),
+    ),
+    EvalQuery(
+        "v4-cpl-06",
+        "coupled",
+        "add a tracking_url column to the orders table",
+        {"file:backend/db/schema.sql": 2, ORDER_ROW: 2},
+        coupled="backend/db/models.py",
+    ),
+    # ----------------------------------------------------------- exact identifiers
+    EvalQuery("v4-err-01", "error-code", "ERR_RATE_LIMITED", {C_RETRY_AFTER: 2, RATE_FILE: 1, HTTP_FILE: 1}),
+    EvalQuery("v4-err-02", "error-code", "INC-2904", {C_MONOTONIC: 2, REFILL: 1}, acceptable=("F12-wallclock",)),
+    EvalQuery(
+        "v4-err-03",
+        "error-code",
+        "SEC-171",
+        {C_WEBHOOK_REPLAY: 2, VERIFY_WEBHOOK: 1},
+        acceptable=("F13-webhook-replay",),
+    ),
+    EvalQuery("v4-err-04", "error-code", "TokenBucket", {BUCKET: 2, REFILL: 1}),
+    EvalQuery(
+        "v4-err-05",
+        "error-code",
+        "verify_webhook",
+        {VERIFY_WEBHOOK: 2, C_WEBHOOK_REPLAY: 1},
+        acceptable=("F13-webhook-replay",),
+    ),
+    EvalQuery(
+        "v4-err-06",
+        "error-code",
+        "AssertionError: bucket empty for 2400s after a -2400s wall-clock step",
+        {REFILL: 2, C_MONOTONIC: 1},
+        ("F12-wallclock",),
+    ),
+]
+
+TEST_QUERIES = TEST_V4_QUERIES  # current held-out split
 QUERIES = DEV_QUERIES  # backwards-compatible alias
-SPLITS = {"dev": DEV_QUERIES, "test_v1": TEST_V1_QUERIES, "test_v2": TEST_V2_QUERIES, "test_v3": TEST_V3_QUERIES}
+SPLITS = {
+    "dev": DEV_QUERIES,
+    "test_v1": TEST_V1_QUERIES,
+    "test_v2": TEST_V2_QUERIES,
+    "test_v3": TEST_V3_QUERIES,
+    "test_v4": TEST_V4_QUERIES,
+}

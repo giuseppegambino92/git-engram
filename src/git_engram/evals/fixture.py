@@ -1,7 +1,7 @@
 """Deterministic synthetic monorepo used by the evaluation suite and the integration tests.
 
 "shopfront" is a small e-commerce monorepo (Python backend, TypeScript web + mobile, Go worker, YAML/SQL/
-HTML assets) with ~52 dated commits that reproduce the failure modes git-engram targets:
+HTML assets) with ~58 dated commits that reproduce the failure modes git-engram targets:
 
 * load-bearing bugfixes that look like redundant code (clock-skew grace, idempotency key, cache lock ...),
 * a performance "optimisation" that caused a race and was reverted,
@@ -850,6 +850,89 @@ RELEASE_JOB_YAML = """  release-expired-reservations:
 """
 
 
+RATE_LIMIT_PY = """
+\"\"\"Per-client token-bucket rate limiting for the public API.\"\"\"
+import time
+from dataclasses import dataclass, field
+
+
+@dataclass
+class TokenBucket:
+    capacity: int = 60
+    refill_per_second: float = 1.0
+    tokens: float = 60.0
+    updated_at: float = field(default_factory=time.time)
+
+    def refill(self, now: float | None = None) -> None:
+        \"\"\"Add the tokens accrued since the last update, never exceeding ``capacity``.\"\"\"
+        now = time.time() if now is None else now
+        elapsed = max(0.0, now - self.updated_at)
+        self.tokens = min(self.capacity, self.tokens + elapsed * self.refill_per_second)
+        self.updated_at = now
+
+    def allow(self, cost: float = 1.0) -> bool:
+        \"\"\"Spend ``cost`` tokens if available; callers answer HTTP 429 when this returns False.\"\"\"
+        self.refill()
+        if self.tokens < cost:
+            return False
+        self.tokens -= cost
+        return True
+
+
+def retry_after_seconds(bucket: TokenBucket, cost: float = 1.0) -> int:
+    \"\"\"Seconds until ``cost`` tokens are available (the Retry-After header value).\"\"\"
+    missing = max(0.0, cost - bucket.tokens)
+    # Round up: a client that retries a fraction of a second early just gets another 429.
+    return int(-(-missing // bucket.refill_per_second))
+"""
+
+NGINX_LIMITS = """
+limit_req_zone $binary_remote_addr zone=public_api:10m rate=60r/m;
+
+server {
+  location /api/ {
+    limit_req zone=public_api burst=20 nodelay;
+  }
+}
+"""
+
+HTTP_RETRY_TS = """
+import axios from "axios";
+
+export const http = axios.create({ baseURL: "/api", timeout: 10000 });
+
+// Wait Retry-After seconds when the API answers 429 ERR_RATE_LIMITED, then retry once.
+http.interceptors.response.use(undefined, async (error) => {
+  const res = error?.response;
+  if (res?.status === 429 && res.data?.code === "ERR_RATE_LIMITED") {
+    const wait = Number(res.headers["retry-after"] ?? 1) * 1000;
+    await new Promise((resolve) => setTimeout(resolve, wait));
+    return http.request(error.config);
+  }
+  throw error;
+});
+"""
+
+WEBHOOK_SIGNING_PY = """
+\"\"\"HMAC signatures for outbound webhook payloads.\"\"\"
+import hashlib
+import hmac
+import time
+
+
+def sign_webhook(body: bytes, secret: bytes, ts: int) -> str:
+    \"\"\"Signature over ``"{ts}.{body}"``: binding the timestamp lets receivers reject stale deliveries.\"\"\"
+    message = f"{ts}.".encode() + body
+    return hmac.new(secret, message, hashlib.sha256).hexdigest()
+
+
+def verify_webhook(body: bytes, signature: str, ts: int, secret: bytes, now: float | None = None) -> bool:
+    \"\"\"Check a webhook signature in constant time.\"\"\"
+    now = time.time() if now is None else now
+    return hmac.compare_digest(sign_webhook(body, secret, ts), signature)
+"""
+
+
 def build_shopfront(root: Path) -> FixtureInfo:
     b = RepoBuilder(root)
 
@@ -1553,6 +1636,64 @@ def leftpad(text: str, width: int, fill: str = " ") -> str:
         "An unhandled promise rejection from a sold-out SKU took down the whole product page.",
     )
 
+    # ------------------------------------------------- v4 extension: rate limits
+    b.write("backend/api/rate_limit.py", RATE_LIMIT_PY)
+    b.write("deploy/nginx/limits.conf", NGINX_LIMITS)
+    b.commit("2026-04-06", "bob", "feat(api): token-bucket rate limiting for public endpoints")
+    b.replace(
+        "backend/api/rate_limit.py",
+        "    updated_at: float = field(default_factory=time.time)",
+        "    updated_at: float = field(default_factory=time.monotonic)",
+    )
+    b.replace(
+        "backend/api/rate_limit.py",
+        "        now = time.time() if now is None else now",
+        "        now = time.monotonic() if now is None else now",
+    )
+    b.commit(
+        "2026-04-13",
+        "dan",
+        "fix(api): refill rate-limit buckets from the monotonic clock (INC-2904)",
+        "An NTP step moved the wall clock back 40 minutes; elapsed time went negative and every client was "
+        "throttled until the clock caught up.",
+    )
+    b.replace("backend/api/rate_limit.py", "    capacity: int = 60\n", "    capacity: int = 120\n")
+    b.replace("backend/api/rate_limit.py", "    tokens: float = 60.0\n", "    tokens: float = 120.0\n")
+    b.replace(
+        "backend/api/rate_limit.py", "    refill_per_second: float = 1.0\n", "    refill_per_second: float = 2.0\n"
+    )
+    b.replace("deploy/nginx/limits.conf", "rate=60r/m", "rate=120r/m")
+    b.commit("2026-04-20", "bob", "feat(api): raise the public rate limit to 120 requests per minute")
+    b.replace(
+        "backend/api/rate_limit.py",
+        "from dataclasses import dataclass, field\n",
+        'from dataclasses import dataclass, field\n\nERR_RATE_LIMITED = "ERR_RATE_LIMITED"\n',
+    )
+    b.write("web/src/api/http.ts", HTTP_RETRY_TS)
+    b.commit(
+        "2026-04-27",
+        "carol",
+        "fix(web): honour Retry-After after ERR_RATE_LIMITED instead of retrying at once",
+        "The web client retried 429 responses immediately, burning the client's whole budget in a tight loop.",
+    )
+
+    # ---------------------------------------------- v4 extension: signed webhooks
+    b.write("backend/webhooks/signing.py", WEBHOOK_SIGNING_PY)
+    b.commit("2026-05-04", "alice", "feat(webhooks): HMAC-signed outbound webhooks")
+    b.replace("backend/webhooks/signing.py", "import time\n", "import time\n\nTOLERANCE_SECONDS = 300\n")
+    b.replace(
+        "backend/webhooks/signing.py",
+        "    return hmac.compare_digest(sign_webhook(body, secret, ts), signature)",
+        "    if abs(now - ts) > TOLERANCE_SECONDS:\n        return False\n"
+        "    return hmac.compare_digest(sign_webhook(body, secret, ts), signature)",
+    )
+    b.commit(
+        "2026-05-11",
+        "carol",
+        "fix(security): refuse webhook signatures older than five minutes (SEC-171)",
+        "A captured delivery could be replayed hours later because nothing checked the signed timestamp.",
+    )
+
     head = b._git("rev-parse", "HEAD")
     info = FixtureInfo(root=root, head=head, commits=dict(b.commits))
     info.failures = FAILURES
@@ -1737,6 +1878,32 @@ E   AssertionError: sold 2 units of sku-000777 but only 1 in stock
   9 passed (31.2s)""",
         notes="Halved the reservation TTL in reservations.py without touching the web countdown.",
         ts="2026-04-03",
+    ),
+    FailureSpec(
+        tag="F12-wallclock",
+        path="backend/api/rate_limit.py",
+        symbol="TokenBucket.refill",
+        old="        now = time.monotonic() if now is None else now",
+        new="        now = time.time() if now is None else now",
+        command="pytest tests/backend/test_rate_limit.py -q",
+        error="""FAILED tests/backend/test_rate_limit.py::test_refill_survives_clock_step - AssertionError: bucket empty for 2400s after a -2400s wall-clock step
+E   AssertionError: bucket empty for 2400s after a -2400s wall-clock step
+1 failed, 7 passed in 0.12s""",
+        notes="Switched TokenBucket.refill back to time.time() so bucket timestamps match the access logs.",
+        ts="2026-05-14",
+    ),
+    FailureSpec(
+        tag="F13-webhook-replay",
+        path="backend/webhooks/signing.py",
+        symbol="verify_webhook",
+        old="    if abs(now - ts) > TOLERANCE_SECONDS:\n        return False\n",
+        new="",
+        command="pytest tests/backend/test_webhooks.py -q",
+        error="""FAILED tests/backend/test_webhooks.py::test_replayed_webhook_is_rejected - assert True is False
+E   assert True is False
+E    +  where True = verify_webhook(b'{"id": 7}', '9a1f...', 1700000000, b'k', now=1700007200)""",
+        notes="Dropped the timestamp tolerance in verify_webhook because partner clocks drift.",
+        ts="2026-05-15",
     ),
 ]
 
