@@ -9,7 +9,7 @@ description = "Local-first Spatio-Temporal, Causal & Negative RAG memory engine 
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.11"
-authors = [{ name = "git-engram contributors" }]
+authors = [{ name = "Giuseppe Gambino" }]
 keywords = ["rag", "mcp", "git", "code-search", "ai-agents", "claude-code", "cursor", "embeddings", "quantization"]
 classifiers = [
     "Development Status :: 4 - Beta",
