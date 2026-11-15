@@ -2,6 +2,10 @@
 
 # git-engram
 
+**English** · [Italiano](README.it.md)
+
+<a href="https://paypal.me/giuseppegambino92"><img src="https://www.paypalobjects.com/en_US/i/btn/btn_donateCC_LG.gif" alt="Donate with PayPal"></a>
+
 **Your coding agent forgets *why* the code is the way it is. git-engram remembers.**
 
 A local-first **Spatio-Temporal, Causal & Negative RAG** memory engine for AI coding agents,<br>
@@ -645,3 +649,9 @@ held-out split committed *before* the change, and `test_no_test_file_contains_he
 ## License
 
 MIT, see [`LICENSE`](LICENSE).
+
+## Support the project
+
+If this project is useful to you, you can support its development with a donation on PayPal:
+
+<a href="https://paypal.me/giuseppegambino92"><img src="https://www.paypalobjects.com/en_US/i/btn/btn_donateCC_LG.gif" alt="Donate with PayPal"></a>
