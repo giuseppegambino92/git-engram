@@ -2,6 +2,8 @@
 
 Tabs: live hybrid search with per-path score breakdown, the temporal co-change graph, the Negative-RAG graveyard
 with syntax-highlighted failed diffs, and an index overview. Install with ``pip install 'git-engram[tui]'``.
+Labels follow the language chosen with ``--lang`` / ``GIT_ENGRAM_LANG`` (see :mod:`git_engram.i18n`); repository data
+(commit messages, code, failure signatures) is shown as stored.
 """
 
 from __future__ import annotations
@@ -19,6 +21,7 @@ from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.widgets import DataTable, Footer, Header, Input, Static, TabbedContent, TabPane, Tree
 
 from ..engine import Engram
+from ..i18n import get_lang, normalize_lang, translate
 from ..models import SearchResponse
 
 
@@ -26,7 +29,7 @@ def _date(ts: float | None) -> str:
     return time.strftime("%Y-%m-%d", time.gmtime(ts)) if ts else "-"
 
 
-class EngramApp(App):
+class EngramApp(App, inherit_bindings=False):
     """Interactive explorer for a git-engram index."""
 
     TITLE = "git-engram"
@@ -39,49 +42,59 @@ class EngramApp(App):
     .right { width: 55%; border-left: solid $primary-darken-2; }
     #coupling-tree { height: 1fr; }
     """
-    BINDINGS = [
+    # Bindings are added per instance in __init__, with descriptions in the chosen language. App's defaults are restated
+    # without ctrl+q (inherit_bindings=False above) so that the translated "quit" entry is the one the footer shows.
+    BINDINGS = [b for b in App.BINDINGS if not (isinstance(b, Binding) and b.key == "ctrl+q")]
+    LOCALIZED_BINDINGS = [
+        # (key, action, catalog key of the description, shown in the footer)
+        ("ctrl+q", "quit", "tui.key.quit", True),
         # Function keys: printable keys would be swallowed by the search box while it has focus.
-        Binding("f1", "show('search')", "Search"),
-        Binding("f2", "show('graph')", "Co-change"),
-        Binding("f3", "show('graveyard')", "Graveyard"),
-        Binding("f4", "show('overview')", "Overview"),
-        Binding("escape", "blur_search", "Leave search box", show=False),
-        Binding("ctrl+q", "quit", "Quit"),
-        Binding("q", "quit", "Quit", show=False),
-        Binding("/", "focus_search", "Search", show=False),
+        ("f1", "show('search')", "tui.key.search", True),
+        ("f2", "show('graph')", "tui.key.graph", True),
+        ("f3", "show('graveyard')", "tui.key.graveyard", True),
+        ("f4", "show('overview')", "tui.key.overview", True),
+        ("escape", "blur_search", "tui.key.blur", False),
+        ("q", "quit", "tui.key.quit", False),
+        ("/", "focus_search", "tui.key.search", False),
     ]
 
-    def __init__(self, engine: Engram, initial_query: str = ""):
+    def __init__(self, engine: Engram, initial_query: str = "", lang: str | None = None):
         super().__init__()
         self.engine = engine
         self.initial_query = initial_query
+        self.lang = normalize_lang(lang) or get_lang()
         self.last_response: SearchResponse | None = None
+        for key, action, label, show in self.LOCALIZED_BINDINGS:
+            self.bind(key, action, description=self._t(label), show=show)
+
+    def _t(self, key: str, **kwargs: object) -> str:
+        return translate(self.lang, key, **kwargs)
 
     # ----------------------------------------------------------------- layout
     def compose(self) -> ComposeResult:
         yield Header(show_clock=False)
         with TabbedContent(initial="search"):
-            with TabPane("Search [F1]", id="search"):
-                yield Input(placeholder="why does ... / ERR_CODE / add a field to ...", id="search-input")
+            with TabPane(self._t("tui.tab.search"), id="search"):
+                yield Input(placeholder=self._t("tui.placeholder"), id="search-input")
                 yield Static("", id="search-status")
                 with Horizontal():
                     with Vertical(classes="left"):
                         yield DataTable(id="results", cursor_type="row", zebra_stripes=True)
                     with VerticalScroll(classes="right"):
-                        yield Static("Type a query. Results update as you type.", id="hit-detail")
-            with TabPane("Co-change graph [F2]", id="graph"):
+                        yield Static(self._t("tui.search_hint"), id="hit-detail")
+            with TabPane(self._t("tui.tab.graph"), id="graph"):
                 with Horizontal():
                     with Vertical(classes="left"):
                         yield DataTable(id="hotspots", cursor_type="row", zebra_stripes=True)
                     with Vertical(classes="right"):
-                        yield Tree("select a file", id="coupling-tree")
-            with TabPane("Graveyard [F3]", id="graveyard"):
+                        yield Tree(self._t("tui.select_file"), id="coupling-tree")
+            with TabPane(self._t("tui.tab.graveyard"), id="graveyard"):
                 with Horizontal():
                     with Vertical(classes="left"):
                         yield DataTable(id="failures", cursor_type="row", zebra_stripes=True)
                     with VerticalScroll(classes="right"):
-                        yield Static("No failure selected.", id="failure-detail")
-            with TabPane("Overview [F4]", id="overview"):
+                        yield Static(self._t("tui.no_failure"), id="failure-detail")
+            with TabPane(self._t("tui.tab.overview"), id="overview"):
                 with VerticalScroll():
                     yield Static("", id="overview-body")
         yield Footer()
@@ -89,11 +102,14 @@ class EngramApp(App):
     def on_mount(self) -> None:
         self.sub_title = self.engine.root.name  # never a full local path: screenshots get shared
         results = self.query_one("#results", DataTable)
-        results.add_columns("#", "kind", "result", "BM25", "Ham", "cos", "graph", "TD-RRF", "rerank")
+        _ = self._t
+        results.add_columns(
+            "#", _("col.kind"), _("col.result"), "BM25", "Ham", "cos", _("col.graph"), "TD-RRF", "rerank"
+        )
         hot = self.query_one("#hotspots", DataTable)
-        hot.add_columns("file", "edges", "max W", "hidden")
+        hot.add_columns(_("col.file"), _("tui.col.edges"), _("tui.col.max_w"), _("tui.col.hidden"))
         fails = self.query_one("#failures", DataTable)
-        fails.add_columns("id", "date", "seen", "command", "targets")
+        fails.add_columns("id", _("col.date"), _("col.seen"), _("col.command"), _("col.targets"))
         self._load_hotspots()
         self._load_failures()
         self._load_overview()
@@ -147,14 +163,15 @@ class EngramApp(App):
         weights = " ".join(f"{k}={v:.1f}" for k, v in resp.fusion_weights.items())
         extras = []
         if resp.warnings:
-            extras.append(f"[red]{len(resp.warnings)} failed attempt(s)[/red]")
+            extras.append(f"[red]{self._t('tui.status.failed', count=len(resp.warnings))}[/red]")
         if resp.invariants:
-            extras.append(f"[yellow]{len(resp.invariants)} invariant(s)[/yellow]")
+            extras.append(f"[yellow]{self._t('tui.status.invariants', count=len(resp.invariants))}[/yellow]")
         if resp.coupling:
-            extras.append(f"{len(resp.coupling)} coupling alert(s)")
+            extras.append(self._t("tui.status.coupling", count=len(resp.coupling)))
         status = self.query_one("#search-status", Static)
         status.update(
-            f"class [b]{resp.query_class or '-'}[/b]  weights {weights}  "
+            f"{self._t('tui.status.class')} [b]{resp.query_class or '-'}[/b]  "
+            f"{self._t('tui.status.weights')} {weights}  "
             f"[b]{resp.timings_ms.get('end_to_end', 0):.2f} ms[/b]  " + "  ".join(extras)
         )
         self._show_hit(0)
@@ -175,22 +192,28 @@ class EngramApp(App):
         resp = self.last_response
         detail = self.query_one("#hit-detail", Static)
         if resp is None or not resp.hits:
-            detail.update("No results.")
+            detail.update(self._t("tui.no_results"))
             return
         h = resp.hits[min(index, len(resp.hits) - 1)]
         breakdown = Table.grid(padding=(0, 2))
         breakdown.add_column(style="bold")
         breakdown.add_column()
+        _ = self._t
         rows = [
-            ("BM25", f"rank {h.bm25_rank}  score {h.bm25_score:.2f}" if h.bm25_rank else "-"),
-            ("vector", f"rank {h.vec_rank}  hamming {h.hamming}  int8 cos {h.cosine:.3f}" if h.vec_rank else "-"),
+            ("BM25", _("tui.hit.bm25", rank=h.bm25_rank, score=f"{h.bm25_score:.2f}") if h.bm25_rank else "-"),
+            (
+                _("tui.hit.vector"),
+                _("tui.hit.vec", rank=h.vec_rank, hamming=h.hamming, cosine=f"{h.cosine:.3f}") if h.vec_rank else "-",
+            ),
             (
                 "co-change",
-                f"rank {h.graph_rank}  activation {h.graph_activation:.2f}  ({h.graph_via})" if h.graph_rank else "-",
+                _("tui.hit.graph", rank=h.graph_rank, activation=f"{h.graph_activation:.2f}", via=h.graph_via)
+                if h.graph_rank
+                else "-",
             ),
             ("TD-RRF", f"{h.fused:.4f}  (recency x{h.recency:.2f})"),
             ("rerank", f"{h.rerank_score:.3f}" if h.rerank_score is not None else "-"),
-            ("date", _date(h.ts)),
+            (_("col.date"), _date(h.ts)),
         ]
         for k, v in rows:
             breakdown.add_row(k, v)
@@ -206,7 +229,7 @@ class EngramApp(App):
             ),
         ]
         if h.attached_commits:
-            why = Table("commit", "intent", "why this code exists", title="attached history", expand=True)
+            why = Table("commit", _("tui.hit.intent"), _("tui.hit.why"), title=_("tui.hit.history_title"), expand=True)
             for c in h.attached_commits:
                 why.add_row(c["hash"][:10], c["intent"], c["subject"])
             parts.append(why)
@@ -215,15 +238,16 @@ class EngramApp(App):
                 Panel(
                     Text(f"{w.notes}\n{w.signature}\n\n{w.diff_excerpt}"),
                     border_style="red",
-                    title=f"do not repeat: failure #{w.failure_id} ({w.occurrences}x)",
+                    title=_("tui.hit.do_not_repeat", failure_id=w.failure_id, occurrences=w.occurrences),
                 )
             )
         for inv in resp.invariants:
             parts.append(Panel(inv.description, border_style="yellow", title=f"{inv.rule_id} [{inv.severity}]"))
         if resp.coupling:
-            ct = Table("coupled file", "W", "P", "link", title="co-change alerts", expand=True)
+            ct = Table(_("col.coupled_file"), "W", "P", _("col.link"), title=_("tui.hit.alerts_title"), expand=True)
             for c in resp.coupling:
-                ct.add_row(c.target, f"{c.weight:.2f}", f"{c.confidence:.0%}", "hidden" if c.hidden else "import")
+                link = _("link.hidden") if c.hidden else _("link.import")
+                ct.add_row(c.target, f"{c.weight:.2f}", f"{c.confidence:.0%}", link)
             parts.append(ct)
         detail.update(Group(*parts))
 
@@ -250,7 +274,7 @@ class EngramApp(App):
                 Text.assemble(
                     (nb.node, style),
                     f"  W={nb.weight:.2f}  P={nb.confidence:.0%}  n={nb.support}  ",
-                    ("hidden" if not nb.static_link else "import-linked", "dim"),
+                    (self._t("link.hidden") if not nb.static_link else self._t("tui.graph.import_linked"), "dim"),
                 ),
                 expand=True,
             )
@@ -281,46 +305,60 @@ class EngramApp(App):
         row = self.engine.db.query_one("SELECT * FROM failures WHERE id = ?", (failure_id,))
         detail = self.query_one("#failure-detail", Static)
         if row is None:
-            detail.update("No failure selected.")
+            detail.update(self._t("tui.no_failure"))
             return
+        _ = self._t
         targets = ", ".join(f"{p}::{s}" if s else p for p, s in self.engine.graveyard.targets_of(failure_id))
         header = Text.assemble(
-            (f"failure #{failure_id}", "bold red"),
-            f"  {_date(row['ts'])}  seen {row['occurrences']}x  exit {row['exit_code']}\n",
+            (_("tui.failure.title", failure_id=failure_id), "bold red"),
+            f"  {_date(row['ts'])}  "
+            + _("tui.failure.meta", occurrences=row["occurrences"], exit_code=row["exit_code"])
+            + "\n",
             ("$ " + row["command"], "bold"),
-            f"\ntargets: {targets}",
+            "\n" + _("tui.failure.targets", targets=targets),
         )
         parts: list = [header]
         if row["notes"]:
-            parts.append(Panel(row["notes"], title="what was tried"))
-        parts.append(Panel(Text(row["signature"], style="red"), title="failure signature"))
-        diff = row["attempted_diff"] or "(no diff captured)"
-        parts.append(Panel(Syntax(diff[:20000], "diff", theme="ansi_dark", word_wrap=True), title="attempted diff"))
+            parts.append(Panel(row["notes"], title=_("tui.failure.tried")))
+        parts.append(Panel(Text(row["signature"], style="red"), title=_("tui.failure.signature")))
+        diff = row["attempted_diff"] or _("tui.failure.no_diff")
+        parts.append(
+            Panel(Syntax(diff[:20000], "diff", theme="ansi_dark", word_wrap=True), title=_("tui.failure.diff"))
+        )
         detail.update(Group(*parts))
 
     # ----------------------------------------------------------------- overview
     def _load_overview(self) -> None:
         s = self.engine.stats()
         mem, c = s["memory_bytes"], s["counts"]
+        _ = self._t
         grid = Table.grid(padding=(0, 2))
         grid.add_column(style="bold")
         grid.add_column()
+        g = s["graveyard"]
         for k, v in [
-            ("repository", s["root"]),
-            ("indexed HEAD", (s["head"] or "-")[:12]),
-            ("files / symbols / commits", f"{c['files']} / {c['symbols']} / {c['commits']}"),
-            ("documents", ", ".join(f"{k}:{v}" for k, v in sorted(s["documents_by_kind"].items()))),
-            ("embedder", f"{s['embedder']} {s['full_dim']}d -> MRL {s['mrl_dim']}d (1-bit + int8)"),
+            (_("label.repository"), s["root"]),
+            (_("label.indexed_head"), (s["head"] or "-")[:12]),
+            (_("tui.overview.counts"), f"{c['files']} / {c['symbols']} / {c['commits']}"),
+            (_("label.documents"), ", ".join(f"{k}:{v}" for k, v in sorted(s["documents_by_kind"].items()))),
+            (_("label.embedder"), f"{s['embedder']} {s['full_dim']}d -> MRL {s['mrl_dim']}d (1-bit + int8)"),
             (
-                "quantized vectors",
+                _("label.quantized_vectors"),
                 f"{mem['vectors_quantized'] / 1024:.1f} KB (float32 {mem['vectors_float32_equivalent'] / 1024:.1f} KB)",
             ),
-            ("FTS5 index", f"{mem['fts5_index'] / 1024:.1f} KB"),
-            ("co-change edges", str(c["cochange_edges"])),
-            ("graveyard", f"{s['graveyard']['failures']} failures / {s['graveyard']['occurrences']} occurrences"),
+            (_("label.fts5"), f"{mem['fts5_index'] / 1024:.1f} KB"),
+            (_("tui.overview.edges"), str(c["cochange_edges"])),
+            (_("label.graveyard"), _("tui.overview.graveyard", failures=g["failures"], occurrences=g["occurrences"])),
         ]:
             grid.add_row(k, str(v))
-        fragile = Table("file", "fixes", "security", "reverts", title="load-bearing hotspots", expand=True)
+        fragile = Table(
+            _("col.file"),
+            _("col.fixes"),
+            _("col.security"),
+            _("col.reverts"),
+            title=_("tui.overview.fragile_title"),
+            expand=True,
+        )
         for r in self.engine.db.query(
             "SELECT f.path, SUM(c.intent='bugfix') AS fx, SUM(c.intent='security') AS sec, "
             "SUM(c.intent='revert') AS rv "
@@ -328,11 +366,20 @@ class EngramApp(App):
             "AND f.path IN (SELECT path FROM files) GROUP BY f.path ORDER BY (fx + 2*sec + 2*rv) DESC LIMIT 10"
         ):
             fragile.add_row(r["path"], str(r["fx"]), str(r["sec"]), str(r["rv"]))
-        invs = Table("rule", "severity", "scope", "description", title="OKF invariants", expand=True)
+        invs = Table(
+            _("col.rule"),
+            _("col.severity"),
+            _("col.scope"),
+            _("col.description"),
+            title=_("tui.overview.invariants_title"),
+            expand=True,
+        )
         for inv in self.engine.invariants.all():
             invs.add_row(inv["rule_id"], inv["severity"], inv["scope"], inv["description"])
-        self.query_one("#overview-body", Static).update(Group(Panel(grid, title="index"), fragile, invs))
+        self.query_one("#overview-body", Static).update(
+            Group(Panel(grid, title=_("tui.overview.index")), fragile, invs)
+        )
 
 
-def run_tui(engine: Engram, initial_query: str = "") -> None:
-    EngramApp(engine, initial_query).run()
+def run_tui(engine: Engram, initial_query: str = "", lang: str | None = None) -> None:
+    EngramApp(engine, initial_query, lang=lang).run()

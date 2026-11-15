@@ -14,7 +14,7 @@ served over the **Model Context Protocol** in ~2 ms. No LangChain, no LlamaIndex
 ![python](https://img.shields.io/badge/python-3.11%2B-3776AB)
 ![license](https://img.shields.io/badge/license-MIT-green)
 ![MCP](https://img.shields.io/badge/MCP-stdio%20server-7c3aed)
-![tests](https://img.shields.io/badge/tests-143%20passing-brightgreen)
+![tests](https://img.shields.io/badge/tests-150%20passing-brightgreen)
 ![frameworks](https://img.shields.io/badge/black--box%20frameworks-0-black)
 ![latency](https://img.shields.io/badge/preflight%20P95-1.8%20ms-orange)
 
@@ -454,10 +454,23 @@ git-engram inspect                            # hidden-coupling hotspots, load-b
 git-engram benchmark [--out RESULTS.md --json results.json]
 git-engram tui ["optional query"]             # interactive dashboard (also: git-engram inspect --tui)
 git-engram mcp                                # stdio MCP server
+git-engram --lang it inspect                  # Italian output; same as GIT_ENGRAM_LANG=it git-engram inspect
 ```
 
 `git-engram query` prints the full scoring breakdown for every hit: BM25 rank and score, Hamming distance, int8
 cosine, graph activation, TD-RRF score, recency multiplier, rerank score and per-stage latency.
+
+![git-engram query on its own history](docs/images/en/cli-query.svg)
+
+*`git-engram query "why does the retriever defer commits instead of dropping them" --file
+src/git_engram/retrieval/engine.py` on this repository's own history (see [Dogfooding](#dogfooding-git-engram-on-itself)).*
+
+**Language.** Tables, panels, messages, `--help` texts and the dashboard are available in English (the default) and
+Italian. Choose with the global `--lang en|it` option (accepted before or after the subcommand) or the
+`GIT_ENGRAM_LANG` environment variable; `--lang` wins. Machine-readable output is never translated: `--json`,
+`--raw`, the `preflight` context block, the benchmark report and every MCP tool response are identical in every
+language, so agents always receive the same payload. Repository data (commit messages, code, failure signatures) is
+shown as stored. argparse's own error messages stay in English.
 
 ## Interactive dashboard
 
@@ -473,10 +486,11 @@ cosine, graph activation, TD-RRF score, recency multiplier, rerank score and per
 
 | Live search with anti-context | Hidden co-change graph | Graveyard diff browser |
 |---|---|---|
-| ![search](docs/tui-search.svg) | ![co-change](docs/tui-cochange.svg) | ![graveyard](docs/tui-graveyard.svg) |
+| ![search](docs/images/en/tui-search.svg) | ![co-change](docs/images/en/tui-cochange.svg) | ![graveyard](docs/images/en/tui-graveyard.svg) |
 
-The screenshots are real renders of the benchmark repository (`App.save_screenshot()`). `tests/test_tui.py` drives the
-same app headlessly.
+The screenshots are real renders of the benchmark repository (`App.save_screenshot()`), regenerated in English and
+Italian by `python scripts/make_screenshots.py` (see [Development](#development)). `git-engram tui --lang it` shows the
+Italian dashboard. `tests/test_tui.py` drives the same app headlessly.
 
 ## Python API
 
@@ -590,11 +604,16 @@ Both run on raw ONNX Runtime + `tokenizers`, with no torch.
 
 ```bash
 uv venv && uv pip install -e ".[dev]"
-pytest -q                                    # 143 tests, fully offline (Python 3.11 and 3.14 verified)
+pytest -q                                    # 150 tests, fully offline (Python 3.11 and 3.14 verified)
 GIT_ENGRAM_NO_TREE_SITTER=1 pytest -q        # what CI runners without cached grammars execute
 ruff check src tests
 git-engram benchmark
+python scripts/make_screenshots.py           # regenerate docs/images/{en,it}/*.svg from real runs
 ```
+
+`scripts/make_screenshots.py` builds and indexes the benchmark repository and a clone of this repository's own
+history in a temporary directory, drives the real dashboard headlessly and records a real `git-engram query` run, once
+per language. Pass `--workdir DIR` to keep the indexed repositories between runs, `--langs it` for one language.
 
 The suite covers quantization math (Hamming kernels vs. an `unpackbits` reference, SimHash angle estimation, int8
 error bounds, counting select), AST chunking for 5 languages, `git log` patch parsing and per-symbol attribution

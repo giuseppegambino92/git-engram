@@ -14,7 +14,7 @@ servito tramite il **Model Context Protocol** in ~2 ms. Niente LangChain, niente
 ![python](https://img.shields.io/badge/python-3.11%2B-3776AB)
 ![licenza](https://img.shields.io/badge/license-MIT-green)
 ![MCP](https://img.shields.io/badge/MCP-stdio%20server-7c3aed)
-![test](https://img.shields.io/badge/tests-143%20passing-brightgreen)
+![test](https://img.shields.io/badge/tests-150%20passing-brightgreen)
 ![framework](https://img.shields.io/badge/black--box%20frameworks-0-black)
 ![latenza](https://img.shields.io/badge/preflight%20P95-1.8%20ms-orange)
 
@@ -479,30 +479,47 @@ git-engram inspect                            # hidden-coupling hotspots, load-b
 git-engram benchmark [--out RESULTS.md --json results.json]
 git-engram tui ["optional query"]             # interactive dashboard (also: git-engram inspect --tui)
 git-engram mcp                                # stdio MCP server
+git-engram --lang it inspect                  # output in italiano; equivale a GIT_ENGRAM_LANG=it git-engram inspect
 ```
 
 `git-engram query` stampa il dettaglio completo dello scoring per ogni hit: rank e score BM25, distanza di Hamming,
 coseno int8, attivazione del grafo, score TD-RRF, moltiplicatore di recency, score di rerank e latenza per stadio.
 
+![git-engram query sulla propria cronologia](docs/images/it/cli-query.svg)
+
+*`git-engram --lang it query "why does the retriever defer commits instead of dropping them" --file
+src/git_engram/retrieval/engine.py` sulla cronologia di questo stesso repository (vedi
+[Dogfooding](#dogfooding-git-engram-applicato-a-se-stesso)).*
+
+**Lingua.** Tabelle, pannelli, messaggi, testi di `--help` e dashboard sono disponibili in inglese (predefinito) e in
+italiano. La lingua si sceglie con l'opzione globale `--lang en|it` (accettata prima o dopo il sottocomando) oppure con
+la variabile d'ambiente `GIT_ENGRAM_LANG`; `--lang` ha la precedenza. L'output pensato per le macchine non viene mai
+tradotto: `--json`, `--raw`, il blocco di contesto di `preflight`, il report del benchmark e tutte le risposte degli
+strumenti MCP sono identici in ogni lingua, quindi gli agent ricevono sempre lo stesso payload. I dati del repository
+(messaggi di commit, codice, firme dei fallimenti) sono mostrati così come sono salvati. I messaggi di errore propri di
+argparse restano in inglese.
+
 ## Dashboard interattiva
 
-`pip install 'git-engram[tui]'`, poi `git-engram tui`. Ha quattro tab, che si selezionano con `F1`–`F4`:
+`pip install 'git-engram[tui]'`, poi `git-engram tui` (in italiano: `git-engram tui --lang it`). Ha quattro tab, che
+si selezionano con `F1`–`F4`:
 
-- **Search:** ricerca as-you-type sull'intero engine, con l'evidenza di ciascun percorso per ogni hit (rank BM25,
-  distanza di Hamming, coseno int8, attivazione co-change, TD-RRF, rerank). Mostra la classe del router, i pesi e la
-  latenza end-to-end, più pannelli per anti-context, invarianti e alert di accoppiamento.
-- **Co-change graph:** gli hotspot di accoppiamento e, per il file selezionato, ogni vicino con W, P(co-change) e stato
-  hidden/import-linked, espandibile fino agli archi a livello di simbolo.
+- **Ricerca (Search):** ricerca as-you-type sull'intero engine, con l'evidenza di ciascun percorso per ogni hit
+  (rank BM25, distanza di Hamming, coseno int8, attivazione co-change, TD-RRF, rerank). Mostra la classe del router, i
+  pesi e la latenza end-to-end, più pannelli per anti-context, invarianti e alert di accoppiamento.
+- **Grafo di co-change (Co-change graph):** gli hotspot di accoppiamento e, per il file selezionato, ogni vicino con W,
+  P(co-change) e stato nascosto/legato da import, espandibile fino agli archi a livello di simbolo.
 - **Graveyard:** ogni tentativo fallito con il relativo comando, la firma del fallimento e il diff con syntax
   highlighting.
-- **Overview:** dimensione dell'indice, memoria quantizzata vs. float32, hotspot portanti e invarianti OKF.
+- **Panoramica (Overview):** dimensione dell'indice, memoria quantizzata vs. float32, hotspot portanti e invarianti OKF.
 
 | Ricerca live con anti-context | Grafo di co-change nascosto | Browser dei diff del Graveyard |
 |---|---|---|
-| ![ricerca](docs/tui-search.svg) | ![co-change](docs/tui-cochange.svg) | ![graveyard](docs/tui-graveyard.svg) |
+| ![ricerca](docs/images/it/tui-search.svg) | ![co-change](docs/images/it/tui-cochange.svg) | ![graveyard](docs/images/it/tui-graveyard.svg) |
 
-Gli screenshot sono render reali del repository di benchmark (`App.save_screenshot()`). `tests/test_tui.py` pilota la
-stessa app in modalità headless.
+Gli screenshot sono render reali del repository di benchmark (`App.save_screenshot()`), rigenerati in inglese e in
+italiano da `python scripts/make_screenshots.py` (vedi [Sviluppo](#sviluppo)). `tests/test_tui.py` pilota la stessa app
+in modalità headless.
 
 ## API Python
 
@@ -619,11 +636,17 @@ ONNX come ms-marco-MiniLM-L-6-v2. Entrambi girano direttamente su ONNX Runtime +
 
 ```bash
 uv venv && uv pip install -e ".[dev]"
-pytest -q                                    # 143 tests, fully offline (Python 3.11 and 3.14 verified)
+pytest -q                                    # 150 tests, fully offline (Python 3.11 and 3.14 verified)
 GIT_ENGRAM_NO_TREE_SITTER=1 pytest -q        # what CI runners without cached grammars execute
 ruff check src tests
 git-engram benchmark
+python scripts/make_screenshots.py           # regenerate docs/images/{en,it}/*.svg from real runs
 ```
+
+`scripts/make_screenshots.py` crea e indicizza in una directory temporanea il repository di benchmark e un clone della
+cronologia di questo stesso repository, pilota la dashboard reale in modalità headless e registra un'esecuzione reale
+di `git-engram query`, una volta per lingua. Con `--workdir DIR` i repository indicizzati vengono conservati tra
+un'esecuzione e l'altra, con `--langs it` si genera una sola lingua.
 
 La suite copre la matematica della quantizzazione (kernel di Hamming confrontati con un riferimento basato su
 `unpackbits`, stima dell'angolo con SimHash, limiti d'errore dell'int8, counting select), il chunking AST per 5
