@@ -31,6 +31,10 @@ claude mcp add git-engram -- git-engram mcp     # Cursor & co.: see "Quickstart"
 Your agent now calls `engram_preflight_check` before editing a file and gets back the incidents, invariants,
 hidden couplings and failed attempts that matter for that change.
 
+![git-engram preflight demo](https://raw.githubusercontent.com/giuseppegambino92/git-engram/main/docs/images/demo.gif)
+
+*Preflight on the bundled demo repository: before touching `charge_with_retry`, the agent learns the payment invariant, the fix it was about to undo and the identical attempt that already failed.*
+
 **Contents:** [The problem](#the-problem-causal-amnesia) · [What the agent sees](#what-the-agent-sees) ·
 [Benchmark](#benchmark) · [Architecture](#architecture) · [Quickstart](#quickstart) · [MCP tools](#mcp-tools) ·
 [CLI](#cli) · [Dashboard](#interactive-dashboard) · [Python API](#python-api) ·

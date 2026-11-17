@@ -31,6 +31,10 @@ claude mcp add git-engram -- git-engram mcp     # Cursor e altri: vedi "Guida ra
 Da quel momento l'agent chiama `engram_preflight_check` prima di modificare un file e riceve incidenti, invarianti,
 accoppiamenti nascosti e tentativi falliti rilevanti per quella modifica.
 
+![git-engram preflight demo](https://raw.githubusercontent.com/giuseppegambino92/git-engram/main/docs/images/demo.gif)
+
+*Preflight sul repository dimostrativo incluso: prima di toccare `charge_with_retry`, l'agent scopre l'invariante sui pagamenti, il fix che stava per annullare e il tentativo identico già fallito.*
+
 **Indice:** [Il problema](#il-problema-amnesia-causale) · [Cosa vede l'agent](#cosa-vede-lagent) ·
 [Benchmark](#benchmark) · [Architettura](#architettura) · [Guida rapida](#guida-rapida) · [Strumenti MCP](#strumenti-mcp) ·
 [CLI](#cli) · [Dashboard](#dashboard-interattiva) · [API Python](#api-python) ·
