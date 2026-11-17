@@ -4,23 +4,32 @@
 
 [English](README.md) · **Italiano**
 
-<a href="https://paypal.me/giuseppegambino92"><img src="https://www.paypalobjects.com/it_IT/IT/i/btn/btn_donateCC_LG.gif" alt="Fai una donazione con PayPal"></a>
-
 **Il tuo coding agent dimentica *perché* il codice è fatto così. git-engram se lo ricorda.**
 
-Un motore di memoria local-first di **Spatio-Temporal, Causal & Negative RAG** per AI coding agent,<br>
-servito tramite il **Model Context Protocol** in ~2 ms. Niente LangChain, niente LlamaIndex, niente GPU, niente rete.
+Un server MCP che dà a Claude Code, Cursor, Windsurf e OpenCode la memoria nascosta nella tua storia git:<br>
+perché esiste una riga, quali file cambiano sempre insieme e quali fix sono già stati provati e sono falliti.<br>
+100% in locale: niente API key, niente GPU, niente rete. Risponde in ~2 ms.
 
+[![PyPI](https://img.shields.io/pypi/v/git-engram)](https://pypi.org/project/git-engram/)
+[![CI](https://github.com/giuseppegambino92/git-engram/actions/workflows/ci.yml/badge.svg)](https://github.com/giuseppegambino92/git-engram/actions/workflows/ci.yml)
 ![python](https://img.shields.io/badge/python-3.11%2B-3776AB)
-![licenza](https://img.shields.io/badge/license-MIT-green)
+![license](https://img.shields.io/badge/license-MIT-green)
 ![MCP](https://img.shields.io/badge/MCP-stdio%20server-7c3aed)
-![test](https://img.shields.io/badge/tests-150%20passing-brightgreen)
-![framework](https://img.shields.io/badge/black--box%20frameworks-0-black)
-![latenza](https://img.shields.io/badge/preflight%20P95-1.8%20ms-orange)
 
 </div>
 
 ---
+
+### Provalo in 30 secondi
+
+```bash
+uv tool install git-engram        # oppure: pipx install git-engram
+cd tuo-repo && git-engram index
+claude mcp add git-engram -- git-engram mcp     # Cursor e altri: vedi "Guida rapida" più sotto
+```
+
+Da quel momento l'agent chiama `engram_preflight_check` prima di modificare un file e riceve incidenti, invarianti,
+accoppiamenti nascosti e tentativi falliti rilevanti per quella modifica.
 
 **Indice:** [Il problema](#il-problema-amnesia-causale) · [Cosa vede l'agent](#cosa-vede-lagent) ·
 [Benchmark](#benchmark) · [Architettura](#architettura) · [Guida rapida](#guida-rapida) · [Strumenti MCP](#strumenti-mcp) ·
@@ -421,7 +430,7 @@ quindi un'invariante che fa match scatta *sempre*.
 niente GPU, nessun accesso alla rete e nessuna API key.
 
 ```bash
-pipx install "git+https://github.com/giuseppegambino92/git-engram"   # or: uv tool install git+https://...
+uv tool install git-engram         # oppure: pipx install git-engram
 cd your-repo
 git-engram index                   # AST + history + co-change graph + embeddings
 git-engram preflight src/auth/token.py -s is_token_expired -i "remove the grace period"
@@ -429,7 +438,7 @@ git-engram preflight src/auth/token.py -s is_token_expired -i "remove the grace 
 
 Da un clone: `pipx install .` (oppure `uv tool install .`). Extra opzionali: `[tui]` per la dashboard, `[treesitter]`
 per le grammatiche tree-sitter, `[onnx]` per embedding neurali e cross-encoder, ad esempio
-`pipx install ".[tui,treesitter]"`. È prevista una release su PyPI.
+`pipx install ".[tui,treesitter]"`.
 
 ### Claude Code
 
@@ -485,7 +494,7 @@ git-engram --lang it inspect                  # output in italiano; equivale a G
 `git-engram query` stampa il dettaglio completo dello scoring per ogni hit: rank e score BM25, distanza di Hamming,
 coseno int8, attivazione del grafo, score TD-RRF, moltiplicatore di recency, score di rerank e latenza per stadio.
 
-![git-engram query sulla propria cronologia](docs/images/it/cli-query.svg)
+![git-engram query sulla propria cronologia](https://raw.githubusercontent.com/giuseppegambino92/git-engram/main/docs/images/it/cli-query.svg)
 
 *`git-engram --lang it query "why does the retriever defer commits instead of dropping them" --file
 src/git_engram/retrieval/engine.py` sulla cronologia di questo stesso repository (vedi
@@ -515,7 +524,7 @@ si selezionano con `F1`–`F4`:
 
 | Ricerca live con anti-context | Grafo di co-change nascosto | Browser dei diff del Graveyard |
 |---|---|---|
-| ![ricerca](docs/images/it/tui-search.svg) | ![co-change](docs/images/it/tui-cochange.svg) | ![graveyard](docs/images/it/tui-graveyard.svg) |
+| ![ricerca](https://raw.githubusercontent.com/giuseppegambino92/git-engram/main/docs/images/it/tui-search.svg) | ![co-change](https://raw.githubusercontent.com/giuseppegambino92/git-engram/main/docs/images/it/tui-cochange.svg) | ![graveyard](https://raw.githubusercontent.com/giuseppegambino92/git-engram/main/docs/images/it/tui-graveyard.svg) |
 
 Gli screenshot sono render reali del repository di benchmark (`App.save_screenshot()`), rigenerati in inglese e in
 italiano da `python scripts/make_screenshots.py` (vedi [Sviluppo](#sviluppo)). `tests/test_tui.py` pilota la stessa app
@@ -687,7 +696,6 @@ hanno test dedicati, e un test di guardia fallisce se un qualsiasi file di test 
 - **Ranking degli identificatori esatti.** Colmare il piccolo divario che resta rispetto a BM25 puro su codici di
   errore e ID di ticket.
 - **Valutazione su repository reali.** Affiancare alla fixture sintetica un benchmark annotato su repository pubblici.
-- **Release su PyPI** e ricette per modelli ONNX precompilati.
 - **Windows**: gestione dei percorsi e copertura in CI.
 
 ## Contribuire

@@ -4,23 +4,32 @@
 
 **English** · [Italiano](README.it.md)
 
-<a href="https://paypal.me/giuseppegambino92"><img src="https://www.paypalobjects.com/en_US/i/btn/btn_donateCC_LG.gif" alt="Donate with PayPal"></a>
-
 **Your coding agent forgets *why* the code is the way it is. git-engram remembers.**
 
-A local-first **Spatio-Temporal, Causal & Negative RAG** memory engine for AI coding agents,<br>
-served over the **Model Context Protocol** in ~2 ms. No LangChain, no LlamaIndex, no GPU, no network.
+An MCP server that gives Claude Code, Cursor, Windsurf and OpenCode the memory hidden in your git history:<br>
+why a line exists, which files always change together, and which fixes were already tried and failed.<br>
+100% local: no API keys, no GPU, no network. Answers in ~2 ms.
 
+[![PyPI](https://img.shields.io/pypi/v/git-engram)](https://pypi.org/project/git-engram/)
+[![CI](https://github.com/giuseppegambino92/git-engram/actions/workflows/ci.yml/badge.svg)](https://github.com/giuseppegambino92/git-engram/actions/workflows/ci.yml)
 ![python](https://img.shields.io/badge/python-3.11%2B-3776AB)
 ![license](https://img.shields.io/badge/license-MIT-green)
 ![MCP](https://img.shields.io/badge/MCP-stdio%20server-7c3aed)
-![tests](https://img.shields.io/badge/tests-150%20passing-brightgreen)
-![frameworks](https://img.shields.io/badge/black--box%20frameworks-0-black)
-![latency](https://img.shields.io/badge/preflight%20P95-1.8%20ms-orange)
 
 </div>
 
 ---
+
+### Try it in 30 seconds
+
+```bash
+uv tool install git-engram        # or: pipx install git-engram
+cd your-repo && git-engram index
+claude mcp add git-engram -- git-engram mcp     # Cursor & co.: see "Quickstart" below
+```
+
+Your agent now calls `engram_preflight_check` before editing a file and gets back the incidents, invariants,
+hidden couplings and failed attempts that matter for that change.
 
 **Contents:** [The problem](#the-problem-causal-amnesia) · [What the agent sees](#what-the-agent-sees) ·
 [Benchmark](#benchmark) · [Architecture](#architecture) · [Quickstart](#quickstart) · [MCP tools](#mcp-tools) ·
@@ -396,7 +405,7 @@ matching invariant *always* fires.
 no GPU, no network access and no API keys.
 
 ```bash
-pipx install "git+https://github.com/giuseppegambino92/git-engram"   # or: uv tool install git+https://...
+uv tool install git-engram         # or: pipx install git-engram
 cd your-repo
 git-engram index                   # AST + history + co-change graph + embeddings
 git-engram preflight src/auth/token.py -s is_token_expired -i "remove the grace period"
@@ -404,7 +413,7 @@ git-engram preflight src/auth/token.py -s is_token_expired -i "remove the grace 
 
 From a clone: `pipx install .` (or `uv tool install .`). Optional extras: `[tui]` for the dashboard, `[treesitter]`
 for tree-sitter grammars, `[onnx]` for neural embeddings and cross-encoders, e.g.
-`pipx install ".[tui,treesitter]"`. A PyPI release is planned.
+`pipx install ".[tui,treesitter]"`.
 
 ### Claude Code
 
@@ -460,7 +469,7 @@ git-engram --lang it inspect                  # Italian output; same as GIT_ENGR
 `git-engram query` prints the full scoring breakdown for every hit: BM25 rank and score, Hamming distance, int8
 cosine, graph activation, TD-RRF score, recency multiplier, rerank score and per-stage latency.
 
-![git-engram query on its own history](docs/images/en/cli-query.svg)
+![git-engram query on its own history](https://raw.githubusercontent.com/giuseppegambino92/git-engram/main/docs/images/en/cli-query.svg)
 
 *`git-engram query "why does the retriever defer commits instead of dropping them" --file
 src/git_engram/retrieval/engine.py` on this repository's own history (see [Dogfooding](#dogfooding-git-engram-on-itself)).*
@@ -486,7 +495,7 @@ shown as stored. argparse's own error messages stay in English.
 
 | Live search with anti-context | Hidden co-change graph | Graveyard diff browser |
 |---|---|---|
-| ![search](docs/images/en/tui-search.svg) | ![co-change](docs/images/en/tui-cochange.svg) | ![graveyard](docs/images/en/tui-graveyard.svg) |
+| ![search](https://raw.githubusercontent.com/giuseppegambino92/git-engram/main/docs/images/en/tui-search.svg) | ![co-change](https://raw.githubusercontent.com/giuseppegambino92/git-engram/main/docs/images/en/tui-cochange.svg) | ![graveyard](https://raw.githubusercontent.com/giuseppegambino92/git-engram/main/docs/images/en/tui-graveyard.svg) |
 
 The screenshots are real renders of the benchmark repository (`App.save_screenshot()`), regenerated in English and
 Italian by `python scripts/make_screenshots.py` (see [Development](#development)). `git-engram tui --lang it` shows the
@@ -649,7 +658,6 @@ have dedicated tests, and a guard test fails if any test file executes held-out 
   losing the recall it restored. Like every change, this needs a fresh held-out split.
 - **Exact-identifier ranking.** Close the remaining small gap to raw BM25 on error codes and ticket ids.
 - **Real-repository evaluation.** Complement the synthetic fixture with an annotated benchmark on public repositories.
-- **PyPI release** and pre-built ONNX model recipes.
 - **Windows** path handling and CI coverage.
 
 ## Contributing
